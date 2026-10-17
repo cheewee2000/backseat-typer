@@ -102,7 +102,7 @@ extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 
 /// Remembers what you type into labelled fields, into the vault, so the next form with the same label fills itself.
 enum FormLearn {
-    private static let skip = try! NSRegularExpression(pattern: #"search|password|passcode|\bpin\b|cvv|cvc|card number|security code|captcha|message|reply|chat|prompt|otp|verification code"#, options: [.caseInsensitive])
+    private static let skip = try! NSRegularExpression(pattern: #"search|password|passcode|\bpin\b|cvv|cvc|card number|security code|captcha|message|reply|chat|prompt|otp|verification code|document content"#, options: [.caseInsensitive])
     static func clean(_ raw: String) -> String {
         var l = raw.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
         l = l.replacingOccurrences(of: #"\s*(\(required\)|\(optional\)|required|optional|\*|:)+\s*$"#, with: "", options: [.regularExpression, .caseInsensitive])

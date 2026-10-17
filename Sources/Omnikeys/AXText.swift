@@ -22,6 +22,16 @@ struct FocusContext {
 enum AX {
     static let systemWide = AXUIElementCreateSystemWide()
     nonisolated(unsafe) static var nudged = Set<pid_t>()   // Chromium processes already switched to full accessibility
+    /// Chromium answers range bounds with empty rects until an assistive client sets AXManualAccessibility on the app,
+    /// and the switch rebuilds its tree: in Google Docs that threw keyboard focus to the address bar mid-sentence.
+    /// So nudge Chromium apps when they come to the front (and at launch), not on the first keystroke in a field.
+    static func nudgeChromium(_ app: NSRunningApplication) {
+        guard let b = app.bundleIdentifier, b.hasPrefix("com.google.Chrome") || b.hasPrefix("org.chromium") || b == "com.brave.Browser" || b.hasPrefix("com.microsoft.edgemac") || b == "company.thebrowser.Browser" || b == "com.vivaldi.Vivaldi",
+              !nudged.contains(app.processIdentifier) else { return }
+        nudged.insert(app.processIdentifier)
+        AXUIElementSetAttributeValue(AXUIElementCreateApplication(app.processIdentifier), "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        Log.w("AX: enabled Chromium accessibility for \(app.localizedName ?? "?") on activation")
+    }
     nonisolated(unsafe) static var docsCursor = [pid_t: AXUIElement]()
     /// Google Docs draws the document on a canvas; its focused edit target has no usable geometry, but the caret is a
     /// DOM element (class kix-cursor) that Chrome exposes with a frame. Found by a one-time walk of the Docs window,
@@ -76,7 +86,7 @@ enum AX {
     }
 
     static func focusedContext(beforeMax: Int = 1500, afterMax: Int = 400) -> FocusContext? {
-        guard let el = attr(systemWide, kAXFocusedUIElementAttribute as String) else { return nil }
+        guard let el = attr(systemWide, kAXFocusedUIElementAttribute as String) else { Log.w("AX: no focused element (front \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"))"); return nil }
         let element = el as! AXUIElement
         var pid: pid_t = 0; AXUIElementGetPid(element, &pid)
         let app = NSRunningApplication(processIdentifier: pid)

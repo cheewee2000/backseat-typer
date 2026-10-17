@@ -50,9 +50,11 @@ enum Suggestion: Equatable {
     func start() {
         tap.onKey = { [weak self] e, c, f in self?.handleKey(e, c, f) ?? false }
         tap.onMouse = { [weak self] in self?.hideAll(); self?.schedule() }
-        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] n in
+            if let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication { AX.nudgeChromium(app) }
             Task { @MainActor in self?.offInApp = nil; self?.hideAll(); self?.schedule() }
         }
+        NSWorkspace.shared.runningApplications.forEach(AX.nudgeChromium)
         pollTrust()
         Engine.shared.prewarm()
     }

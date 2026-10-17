@@ -51,6 +51,13 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
             }
         case "vault": Vault.shared.loadPlain(path: q["file"] ?? "")   // test data, never saved
         case "fill": controller.fillForm()
+        case "unlearn":   // drop a learned custom field by label (cleanup after a test that learned something it shouldn't)
+            let label = q["label"] ?? ""
+            let keys = Vault.shared.data.custom.filter { $0.label.caseInsensitiveCompare(label) == .orderedSame }.map(\.key)
+            Vault.shared.data.custom.removeAll { keys.contains($0.key) }
+            for i in Vault.shared.data.profiles.indices { for k in keys { Vault.shared.data.profiles[i].values[k] = nil } }
+            if !keys.isEmpty { Vault.shared.save() }
+            Log.w("unlearn \(label.debugDescription): removed \(keys)")
         case "focusrole":   // give keyboard focus to the first element of a role in the front window (tests: a note's body)
             guard let app = NSWorkspace.shared.frontmostApplication, let win = AX.attr(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute as String) else { Log.w("focusrole: no window"); return }
             let want = q["role"] ?? "AXTextArea"
