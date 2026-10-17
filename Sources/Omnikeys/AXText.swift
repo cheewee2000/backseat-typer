@@ -22,6 +22,31 @@ struct FocusContext {
 enum AX {
     static let systemWide = AXUIElementCreateSystemWide()
     nonisolated(unsafe) static var nudged = Set<pid_t>()   // Chromium processes already switched to full accessibility
+    nonisolated(unsafe) static var docsCursor = [pid_t: AXUIElement]()
+    /// Google Docs draws the document on a canvas; its focused edit target has no usable geometry, but the caret is a
+    /// DOM element (class kix-cursor) that Chrome exposes with a frame. Found by a one-time walk of the Docs window,
+    /// then re-read each time. Only runs when the focused window is a Google Docs tab.
+    static func docsCaret(pid: pid_t) -> CGRect? {
+        func frame(_ e: AXUIElement) -> CGRect? {
+            guard let r = cgRect(attr(e, "AXFrame")), r.height >= 8, r.height <= 80, r.width <= 4 else { return nil }
+            return r
+        }
+        if let e = docsCursor[pid], let r = frame(e) { return r }
+        docsCursor[pid] = nil
+        guard let win = attr(AXUIElementCreateApplication(pid), kAXFocusedWindowAttribute as String),
+              (attr(win as! AXUIElement, kAXTitleAttribute as String) as? String)?.contains("Google Docs") == true else { return nil }
+        var n = 0, found: AXUIElement?
+        func walk(_ e: AXUIElement, _ depth: Int) {
+            guard found == nil, n < 4000, depth < 60 else { return }
+            n += 1
+            if let cls = attr(e, "AXDOMClassList") as? [String], cls.contains("kix-cursor") { found = e; return }
+            for k in (attr(e, kAXChildrenAttribute as String) as? [AXUIElement]) ?? [] { walk(k, depth + 1) }
+        }
+        walk(win as! AXUIElement, 0)
+        guard let e = found, let r = frame(e) else { Log.w("AX: no kix-cursor in Google Docs window after \(n) elements"); return nil }
+        docsCursor[pid] = e
+        return r
+    }
 
     static func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
         var v: CFTypeRef?
@@ -102,6 +127,7 @@ enum AX {
                 Log.w("AX: enabled Chromium accessibility for \(app?.localizedName ?? "pid \(pid)")")
             }
         }
+        if rect == nil, let r = docsCaret(pid: pid) { rect = toAppKit(CGRect(x: r.minX, y: r.minY, width: 0, height: r.height)); how = "kix-cursor" }
         if rect == nil, let pos = attr(element, kAXPositionAttribute as String), let size = attr(element, kAXSizeAttribute as String) {
             var p = CGPoint.zero, s = CGSize.zero
             if AXValueGetValue(pos as! AXValue, .cgPoint, &p), AXValueGetValue(size as! AXValue, .cgSize, &s) {

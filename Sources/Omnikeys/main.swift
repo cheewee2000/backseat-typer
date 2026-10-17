@@ -51,11 +51,44 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
             }
         case "vault": Vault.shared.loadPlain(path: q["file"] ?? "")   // test data, never saved
         case "fill": controller.fillForm()
+        case "axfind":   // walk the focused window for caret-shaped elements (Google Docs draws its own caret as a DOM div)
+            guard let el = AX.attr(AX.systemWide, kAXFocusedUIElementAttribute as String) else { Log.w("axfind: no focus"); return }
+            var pid: pid_t = 0; AXUIElementGetPid(el as! AXUIElement, &pid)
+            let app = AXUIElementCreateApplication(pid)
+            guard let win = AX.attr(app, kAXFocusedWindowAttribute as String) else { Log.w("axfind: no window"); return }
+            var n = 0, hits = 0
+            func walk(_ e: AXUIElement, _ depth: Int) {
+                n += 1; if n > 20000 || depth > 60 { return }
+                let role = AX.attr(e, kAXRoleAttribute as String) as? String ?? "?"
+                if let f = AX.attr(e, "AXFrame"), let r = AX.cgRect(f), r.width <= 3, r.height >= 8, r.height <= 60 {
+                    hits += 1
+                    if hits <= 12 { Log.w("axfind hit role=\(role) sub=\(AX.attr(e, kAXSubroleAttribute as String) as? String ?? "") frame=\(r) desc=\((AX.attr(e, kAXDescriptionAttribute as String) as? String ?? "").prefix(40)) dom=\((AX.attr(e, "AXDOMClassList") as? [String] ?? []).joined(separator: " ").prefix(60))") }
+                }
+                for k in (AX.attr(e, kAXChildrenAttribute as String) as? [AXUIElement]) ?? [] { walk(k, depth + 1) }
+            }
+            walk(win as! AXUIElement, 0)
+            Log.w("axfind walked \(n) elements, \(hits) caret-shaped")
+        case "raise":   // raise the window of a process whose title contains the given text
+            if let t = q["title"] {
+                let pids = q["pid"].flatMap(Int32.init).map { [$0] } ?? NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == (q["bundle"] ?? "com.google.Chrome") }.map(\.processIdentifier)
+                for pid in pids {
+                    let wins = AX.attr(AXUIElementCreateApplication(pid), kAXWindowsAttribute as String) as? [AXUIElement] ?? []
+                    let titles = wins.map { AX.attr($0, kAXTitleAttribute as String) as? String ?? "" }
+                    if let i = titles.firstIndex(where: { $0.contains(t) }) {
+                        AXUIElementPerformAction(wins[i], kAXRaiseAction as CFString); NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateIgnoringOtherApps])
+                    }
+                    Log.w("e2e raise \(t.debugDescription) pid \(pid): windows=\(titles.map { String($0.prefix(40)) })")
+                }
+            }
+        case "activate":   // bring a process to the front (the shell host may not)
+            if let pid = Int32(q["pid"] ?? ""), let app = NSRunningApplication(processIdentifier: pid) { Log.w("e2e activate \(app.localizedName ?? "?") -> \(app.activate(options: [.activateIgnoringOtherApps]))") }
         case "axprobe":   // geometry diagnostics for the focused element
             guard let el = AX.attr(AX.systemWide, kAXFocusedUIElementAttribute as String) else { Log.w("axprobe: no focus"); return }
             let e = el as! AXUIElement
             let sel = AX.cfRange(AX.attr(e, kAXSelectedTextRangeAttribute as String))
             Log.w("axprobe role=\(AX.attr(e, kAXRoleAttribute as String) as? String ?? "?") sel=\(sel.map { "\($0.location),\($0.length)" } ?? "nil") n=\(AX.attr(e, kAXNumberOfCharactersAttribute as String) as? Int ?? -1)")
+            Log.w("axprobe window=\((AX.attr(AXUIElementCreateApplication({ var p: pid_t = 0; AXUIElementGetPid(e, &p); return p }()), kAXFocusedWindowAttribute as String).flatMap { AX.attr($0 as! AXUIElement, kAXTitleAttribute as String) as? String } ?? "?").prefix(60))")
+            Log.w("axprobe value=\(((AX.attr(e, kAXValueAttribute as String) as? String) ?? "").suffix(300).debugDescription)")
             if let r = sel {
                 for (name, rg) in [("prev", CFRange(location: max(0, r.location - 1), length: 1)), ("next", CFRange(location: r.location, length: 1)), ("caret", CFRange(location: r.location, length: 0))] {
                     let v = AX.param(e, kAXBoundsForRangeParameterizedAttribute as String, AX.rangeValue(rg))

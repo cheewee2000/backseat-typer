@@ -128,22 +128,22 @@ enum Suggestion: Equatable {
     func refresh(force: Bool = false) {
         gen += 1
         task?.cancel()
-        guard settings.p.enabled, !pausedGlobally, Engine.shared.available else { return }
-        guard var c = AX.focusedContext() else { ctx = nil; return }
+        guard settings.p.enabled, !pausedGlobally, Engine.shared.available else { skip("off"); return }
+        guard var c = AX.focusedContext() else { ctx = nil; skip("no AX context"); return }
         ctx = c
         trackRecording(c)
-        guard !c.isSecure else { return }
+        guard !c.isSecure else { skip("secure field"); return }
         let rule = settings.rule(for: c.bundleID, name: c.appName)
-        guard rule.enabled, offInApp != c.bundleID else { return }
-        if let u = appPauseUntil[c.bundleID], u > Date() { return }
+        guard rule.enabled, offInApp != c.bundleID else { skip("app rule off / esc in \(c.appName)"); return }
+        if let u = appPauseUntil[c.bundleID], u > Date() { skip("app paused"); return }
         let forced = force || (forcedElement.map { CFEqual($0, c.element) } ?? false)
-        if let u = fieldPauseUntil, u > Date(), !forced { return }
-        if codeEditors.contains(c.bundleID), !settings.p.completeInCodeEditors, !forced { return }
+        if let u = fieldPauseUntil, u > Date(), !forced { skip("field paused"); return }
+        if codeEditors.contains(c.bundleID), !settings.p.completeInCodeEditors, !forced { skip("code editor"); return }
         if terminals.contains(c.bundleID), !settings.p.completeInTerminals, !forced, !looksLikeAgentPrompt(c.before) { return }
         if terminals.contains(c.bundleID), let input = Controller.agentInput(c.before) { c.before = input; c.after = "" }
-        if c.subrole == "AXSearchField", !forced { return }
+        if c.subrole == "AXSearchField", !forced { skip("search field"); return }
 
-        if !c.selected.isEmpty { return }
+        if !c.selected.isEmpty { skip("selection"); return }
         let p = settings.p
         if p.formFill, FormFill.isEmptyField(c), let m = FormFill.match(c.element, profile: p.fillProfile) {
             Log.w("SHOW fill \(c.appName) \(m.label.debugDescription) -> \(m.sensitive ? Template.mask(m.value) : m.value.debugDescription)")
@@ -162,9 +162,10 @@ enum Suggestion: Equatable {
                 return
             }
         }
-        guard c.before.count >= p.minContextChars || forced else { return }
+        guard c.before.count >= p.minContextChars || forced else { skip("short context"); return }
         let afterLine = c.after.prefix(while: { $0 != "\n" })
-        if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty, !p.midLine { return }
+        if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty, !p.midLine { skip("mid-line"); return }
+        lastSkip = ""
 
         var req = CompletionRequest(
             before: c.before, after: c.after,
@@ -193,6 +194,9 @@ enum Suggestion: Equatable {
             }
         }
     }
+    private var lastSkip = ""
+    /// Why the last refresh produced no request, logged once per change of reason.
+    private func skip(_ why: String) { if why != lastSkip { lastSkip = why; Log.w("skip: \(why) in \(ctx?.appName ?? "?")/\(ctx?.role ?? "?")") } }
     private func looksLikeAgentPrompt(_ before: String) -> Bool { Controller.agentInput(before) != nil }
     /// A terminal's AX caret sits at the end of the screen buffer, below an agent TUI's status bar, so `before` ends in
     /// chrome while the words being typed sit on the `>` prompt line above. Returns the text up to the end of that

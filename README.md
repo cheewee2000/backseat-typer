@@ -21,3 +21,7 @@ The e2e script launches the app with `--e2e`, which enables an `omnikeys://type`
 Context comes from the Accessibility API, never from screenshots: the text around the caret, the rest of the focused window (an email thread above the reply box, a chat history) and up to three other windows visible beside it, limited to elements actually on screen. Toggle in Settings. Grant Accessibility to Omnikeys once (System Settings → Privacy & Security → Accessibility). Log: `~/Library/Logs/Omnikeys.log`.
 
 CWT_STENGW9_2609
+
+## App notes
+- **Google Docs** draws the document on a canvas. Turn on Tools › Accessibility › screen reader support (⌘⌥Z) in Docs; the hidden edit target then carries the current paragraph, and the caret is read from Docs' own `kix-cursor` element. Without it the context is one character and the log says `skip: short context`.
+- **Terminals** complete from the agent prompt line (`>`, `›`, `❯`); the AX caret sits below the status bar. Knife Terminal pads empty cells with NUL, mapped to spaces.
