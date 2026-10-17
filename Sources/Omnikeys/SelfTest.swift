@@ -31,12 +31,21 @@ enum SelfTest {
         if e.available {
             var done = false
             var out = "", ms = 0, err = ""
+            let modelID = ProcessInfo.processInfo.environment["OMNIKEYS_MODEL"] ?? Models.apple
+            // OMNIKEYS_BENCH=1: the same contexts through whichever model, output and latency per line.
+            let bench = ProcessInfo.processInfo.environment["OMNIKEYS_BENCH"] != nil
+            let contexts = bench ? ["What are we doing with all this stuff", "Elizabeth Holmes is the", "I went to the store to buy some",
+                                    "Hey, are you free for lunch on", "The bench has a rocker sole so it", "Can you send me the invoice for the",
+                                    "Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
             Task {
-                let t0 = Date()
-                do {
-                    out = try await e.complete(CompletionRequest(before: "Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the", after: "", clipboard: nil, appName: "Mail", appInstructions: "", examples: [], length: .medium, british: false, model: ProcessInfo.processInfo.environment["OMNIKEYS_MODEL"] ?? Models.apple), custom: "")
-                } catch { err = "\(error)" }
-                ms = Int(Date().timeIntervalSince(t0) * 1000)
+                for (i, c) in contexts.enumerated() {
+                    let t0 = Date()
+                    do {
+                        out = try await e.complete(CompletionRequest(before: c, after: "", clipboard: nil, appName: "Mail", appInstructions: "", examples: [], length: .medium, british: false, model: modelID), custom: "")
+                    } catch { err = "\(error)" }
+                    ms = Int(Date().timeIntervalSince(t0) * 1000)
+                    if bench, i < contexts.count - 1 { print("BENCH \(ms)ms \(c.debugDescription) -> \(out.debugDescription)") }
+                }
                 done = true
             }
             // Pump the main run loop instead of blocking it: the MLX loader runs on the main actor.
