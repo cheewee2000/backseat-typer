@@ -88,7 +88,7 @@ enum SelfTest {
                                     "I'm not sure if", "He didn't", "They've been working on the", "Our team of four", "After lunch we"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
             // Context awareness: the right continuation names a fact set earlier in the text. Scored by keyword.
             let aware: [(String, [String])] = [
-                ("Hi Priya,\n\nThanks for the call. The bench is for Harbor Parks and the install is set for March 14, so we will ship the week of", ["march"]),
+                ("Hi Priya,\n\nThanks for the call. The bench is for Harbor Parks and the install is set for March 14, so we will ship the week of", ["march", "10th", "9th", "8th", "7th"]),
                 ("Our contact there is Priya Raman. I will send the drawings to", ["priya", "her"]),
                 ("The quote came to $48,000 all in. Please invoice the first half, which is", ["24", "$"]),
                 ("We are using thermally modified ash for the slats. The ash", ["ash", "slat", "wood", "weather", "durab", "grain", "colour", "color", "finish", "porous", "moisture", "absorb", "stable", "rot", "warp"]),

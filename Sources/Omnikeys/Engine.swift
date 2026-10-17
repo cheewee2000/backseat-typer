@@ -92,13 +92,14 @@ struct CompletionRequest {
     /// prompt so the model has to continue the writer's own text instead.
     func complete(_ r: CompletionRequest, custom: String) async throws -> String {
         let out = try await completeOnce(r, custom: custom)
-        guard out.isEmpty, !r.screen.isEmpty || r.clipboard != nil else { return out }
+        guard out.isEmpty else { return out }
         var bare = r; bare.screen = ""; bare.clipboard = nil
-        let again = try await completeOnce(bare, custom: custom)
+        let again = try await completeOnce(bare, custom: custom, strict: true)
         if !again.isEmpty { Log.w("RETRY without screen text -> \(again.debugDescription)") }
         return again
     }
-    func completeOnce(_ r: CompletionRequest, custom: String) async throws -> String {
+    /// `strict`: the first token must carry a letter or digit ("See you on" → "..." then a thinking channel is a stop in disguise).
+    func completeOnce(_ r: CompletionRequest, custom: String, strict: Bool = false) async throws -> String {
         // The small models lose the thread when anything follows the typed text, so the prompt is the text alone
         // and everything else (writer notes, samples, clipboard) lives in the instructions. Plain string output:
         // the JSON wrapper of @Generable ate most of a 20-token budget and left one-word suggestions.
@@ -134,7 +135,7 @@ struct CompletionRequest {
                     let input = LMInput(tokens: MLXArray(ids))
                     // An instruct model likes to end its turn after a finished sentence; a suggestion is wanted anyway.
                     let stops = Array(ctx.configuration.eosTokenIds) + ([ctx.tokenizer.eosTokenId, ctx.tokenizer.unknownTokenId] + ctx.configuration.extraEOSTokens.map { ctx.tokenizer.convertTokenToId($0) }).compactMap { $0 }
-                    let steer = Steer(stop: stops, left: 3, target: target, vocab: Engine.vocab(r.model, ctx.tokenizer), tokenizer: ctx.tokenizer)
+                    let steer = Steer(stop: stops, left: 3, target: target, vocab: Engine.vocab(r.model, ctx.tokenizer), tokenizer: ctx.tokenizer, strict: strict)
                     let it = try TokenIterator(input: input, model: ctx.model, processor: steer, sampler: ArgMaxSampler(), maxTokens: tokens)
                     return MLXLMCommon.generate(input: input, context: ctx, iterator: it) { (_: [Int]) in .more }.output
                 }
@@ -284,9 +285,11 @@ struct Steer: LogitProcessor {
     var left: Int
     let target: String
     let newline: MLXArray   // tokens that begin with a line break: not as the first token, the suggestion continues this line
-    init(stop: [Int], left: Int, target: String, vocab: [(String, Int32)], tokenizer: MLXLMCommon.Tokenizer) {
+    let wordless: MLXArray  // tokens with no letter or digit; masked as the first token on the strict retry
+    init(stop: [Int], left: Int, target: String, vocab: [(String, Int32)], tokenizer: MLXLMCommon.Tokenizer, strict: Bool = false) {
         self.stop = MLXArray(stop.map { Int32($0) }); self.left = left; self.target = target; self.vocab = vocab; self.tokenizer = tokenizer
         self.newline = MLXArray(vocab.filter { $0.0.hasPrefix("\n") || $0.0.hasPrefix("\r") }.map(\.1))
+        self.wordless = strict ? MLXArray(vocab.filter { !$0.0.contains(where: { $0.isLetter || $0.isNumber }) }.map(\.1)) : MLXArray([Int32]())
     }
     let vocab: [(String, Int32)]   // token text (space for ▁), sorted by text
     let tokenizer: MLXLMCommon.Tokenizer
@@ -313,6 +316,7 @@ struct Steer: LogitProcessor {
         l[.ellipsis, stop] = MLXArray(-Float.infinity)
         // After a full stop the model likes to open a new paragraph, and the single-line rule then shows nothing.
         if ids.isEmpty, newline.size > 0 { l[.ellipsis, newline] = MLXArray(-Float.infinity) }
+        if ids.isEmpty, wordless.size > 0 { l[.ellipsis, wordless] = MLXArray(-Float.infinity) }
         return l
     }
     mutating func didSample(token: MLXArray) {
