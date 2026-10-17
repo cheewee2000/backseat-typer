@@ -13,6 +13,10 @@ enum SelfTest {
         check("mid-word continues", Engine.clean(before: "I went to the sto", raw: "re", maxWords: 8) == "re")
         check("no double space", Engine.clean(before: "I went to the ", raw: " store", maxWords: 8) == "store")
         check("word cap", Engine.clean(before: "a b", raw: " one two three four five", maxWords: 3) == " one two three", Engine.clean(before: "a b", raw: " one two three four five", maxWords: 3).debugDescription)
+        check("copied line dropped", Engine.clean(before: "- Confirm the SOW will read as a fixed fee\n- Send th", raw: "e SOW will read as a fixed fee", maxWords: 8) == "", Engine.clean(before: "- Confirm the SOW will read as a fixed fee\n- Send th", raw: "e SOW will read as a fixed fee", maxWords: 8).debugDescription)
+        check("copied screen line dropped", Engine.clean(before: "Hi Taylor, ", raw: "Confirm the SOW will read as a fixed", maxWords: 8, existing: "todo: confirm the SOW will read as a fixed fee") == "")
+        check("case-insensitive overlap", Engine.clean(before: "Please review the Projections", raw: "review the projections and finalize", maxWords: 8) == " and finalize", Engine.clean(before: "Please review the Projections", raw: "review the projections and finalize", maxWords: 8).debugDescription)
+        check("short repeat allowed", Engine.clean(before: "I said yes and", raw: " yes", maxWords: 8) == " yes")
         check("label echo dropped", Engine.clean(before: "I had a look at the sketches.", raw: "continuation", maxWords: 8) == "")
         check("single line", Engine.clean(before: "Hi", raw: " there\nmore", maxWords: 8) == " there")
         // learned-field fuzzy matching

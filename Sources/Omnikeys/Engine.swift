@@ -66,7 +66,7 @@ struct CompletionRequest {
     }
 
     static let baseInstructions = """
-    You are an inline autocomplete engine, like predictive text on a keyboard. The user is typing. You output only the words that come next, continuing their text seamlessly in the same language, register and style. Never explain, never comment, never repeat text that is already written, never wrap the output in quotes. If the text ends mid-word, finish that word first.
+    You are an inline autocomplete engine, like predictive text on a keyboard. The user is typing. You output only the words that come next, continuing their text seamlessly in the same language, register and style. Never explain, never comment, never wrap the output in quotes. If the text ends mid-word, finish that word first. Never repeat text that is already written: not the words just before the cursor, and not a sentence or list item that appears earlier in the text or elsewhere on screen. Say something new.
     """
 
     func instructions(_ r: CompletionRequest, custom: String) -> String {
@@ -113,7 +113,7 @@ struct CompletionRequest {
                                       additionalContext: ["enable_thinking": false])
             out = try await session.respond(to: prompt)
         }
-        return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20))
+        return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20), existing: r.after + "\n" + r.screen)
     }
 
     // MARK: MLX models
@@ -150,7 +150,11 @@ struct CompletionRequest {
     }
 
     /// Normalizes raw model output into a ghost-text continuation.
-    static func clean(before: String, raw: String, maxWords: Int) -> String {
+    static func norm(_ s: String) -> String {
+        s.lowercased().replacingOccurrences(of: #"[\s\p{P}]+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+    }
+    /// `existing` is other text the model could have copied (after the cursor, on screen).
+    static func clean(before: String, raw: String, maxWords: Int, existing: String = "") -> String {
         var s = raw.replacingOccurrences(of: "\r", with: "")
         if let nl = s.firstIndex(of: "\n") { s = String(s[..<nl]) }   // single line
         s = s.trimmingCharacters(in: CharacterSet(charactersIn: "\"“”`"))
@@ -161,7 +165,23 @@ struct CompletionRequest {
         for k in stride(from: min(tail.count, s.count), through: 2, by: -1) {
             if s.hasPrefix(tail.suffix(k)) { s = String(s.dropFirst(k)); break }
         }
+        // Same again at word level, case- and punctuation-insensitive: "…review the Projections" + "review the projections and" → " and".
+        let tailWords = norm(String(before.suffix(300))).split(separator: " ").map(String.init)
+        var outWords = s.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        if !outWords.isEmpty {
+            for n in stride(from: min(tailWords.count, outWords.count, 20), through: 1, by: -1) {
+                let a = tailWords.suffix(n), b = outWords.prefix(n).map { norm($0) }
+                if Array(a) == b { s = " " + outWords.dropFirst(n).joined(separator: " "); outWords = Array(outWords.dropFirst(n)); break }
+            }
+        }
         if s.trimmingCharacters(in: .whitespaces).isEmpty { return "" }
+        // A copy of a line that already exists (earlier in the text, after the cursor, or on screen) is not a continuation.
+        let lastPartial = before.last.map { $0.isLetter || $0.isNumber } == true ? String(before.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).last ?? "") : ""
+        let candidate = norm((s.first?.isLetter == true && !lastPartial.isEmpty ? lastPartial : "") + s)
+        if candidate.split(separator: " ").count >= 4 {
+            let pool = norm(String(before.suffix(3000))) + " \n " + norm(String(existing.prefix(6000)))
+            if pool.contains(candidate) { return "" }
+        }
         // Joining: a new word after a complete word needs a space; mid-word it must not have one.
         let lastChar = before.last
         let firstChar = s.first!
