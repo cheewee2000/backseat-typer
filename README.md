@@ -7,6 +7,7 @@ Predictive text for every Mac text field, on-device. A Cotypist-style clone with
 - Typo fix with Tab, emoji by `:shortcode`, mid-line completion, clipboard awareness (off by default: it measurably derails the small models).
 - Model picker in Settings: Apple, Gemma 4 E2B (Cotypist's default), Gemma 4 E4B, Qwen2.5 1.5B, Qwen3 1.7B. Weights cache in `~/.cache/huggingface/hub` (1 to 3 GB each).
 - Global and per-app custom instructions, personalization from your own typing history (6-stop slider), delete all data.
+- Form fill, ported from Form Filler: an encrypted vault of your details (names, contact, address, IDs, work, emergency, medical, insurance, custom fields, several people). An empty field whose label matches shows the answer as ghost text, Tab fills it. ⌃⌥F fills every empty field in the front window. Sensitive fields are masked and skipped by whole-form fill unless enabled. Imports the iPhone and web Form Filler encrypted backups unchanged.
 - Labs: numbered word alternatives, synonyms for a selected word, British English, right-to-left.
 
 ## Build
@@ -17,6 +18,6 @@ Predictive text for every Mac text field, on-device. A Cotypist-style clone with
 
 The e2e script launches the app with `--e2e`, which enables an `omnikeys://type` / `omnikeys://key` URL driver so the AX-trusted app types for the (untrusted) shell. The driver is off in normal launches.
 
-Context comes from the Accessibility API (the text around the caret in the focused field), never from screenshots. Grant Accessibility to Omnikeys once (System Settings → Privacy & Security → Accessibility). Log: `~/Library/Logs/Omnikeys.log`.
+Context comes from the Accessibility API, never from screenshots: the text around the caret, the rest of the focused window (an email thread above the reply box, a chat history) and up to three other windows visible beside it, limited to elements actually on screen. Toggle in Settings. Grant Accessibility to Omnikeys once (System Settings → Privacy & Security → Accessibility). Log: `~/Library/Logs/Omnikeys.log`.
 
 CWT_STENGW9_2609

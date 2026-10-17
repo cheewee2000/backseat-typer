@@ -5,11 +5,13 @@ enum Suggestion: Equatable {
     case completion(String)
     case typo(word: String, fix: String, trailing: String)
     case emoji(code: String, emoji: String)
+    case fill(label: String, value: String, sensitive: Bool)
     var display: String {
         switch self {
         case .completion(let s): return s
         case .typo(_, let fix, _): return "→ \(fix)"
         case .emoji(let code, let e): return "\(e) :\(code):"
+        case .fill(_, let v, let sensitive): return sensitive ? Template.mask(v) : v
         }
     }
 }
@@ -84,6 +86,7 @@ enum Suggestion: Equatable {
         }
         if p.revealAlternatives?.matches(code, flags) == true, case .completion(let s)? = suggestion { requestAlternatives(for: s); return true }
         if p.showSynonyms?.matches(code, flags) == true { requestSynonyms(immediate: true); return true }
+        if p.fillForm?.matches(code, flags) == true { fillForm(); return true }
 
         let plain = flags.rawValue & Shortcut.mask
         if list.isVisible, plain == 0, let n = digit(code), n >= 1, n <= listItems.count { pick(listItems[n - 1]); return true }
@@ -152,6 +155,10 @@ enum Suggestion: Equatable {
             return
         }
         let p = settings.p
+        if p.formFill, FormFill.isEmptyField(c), let m = FormFill.match(c.element, profile: p.fillProfile) {
+            Log.w("SHOW fill \(c.appName) \(m.label.debugDescription) -> \(m.sensitive ? Template.mask(m.value) : m.value.debugDescription)")
+            show(.fill(label: m.label, value: m.value, sensitive: m.sensitive)); return
+        }
         let lastWord = String(c.before.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).last ?? "")
         if p.emojiSuggestions, lastWord.hasPrefix(":"), lastWord.count >= 3, c.before.last != " ",
            let m = Emoji.matches(String(lastWord.dropFirst())).first {
@@ -169,7 +176,7 @@ enum Suggestion: Equatable {
         let afterLine = c.after.prefix(while: { $0 != "\n" })
         if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty, !p.midLine { return }
 
-        let req = CompletionRequest(
+        var req = CompletionRequest(
             before: c.before, after: c.after,
             clipboard: p.clipboardAwareness ? NSPasteboard.general.string(forType: .string) : nil,
             appName: c.appName, appInstructions: rule.instructions,
@@ -177,13 +184,19 @@ enum Suggestion: Equatable {
             length: p.completionLength, british: p.britishEnglish, model: p.model)
         let g = gen
         let custom = p.customInstructions
+        let wantScreen = p.screenContext
         task = Task { [weak self] in
             let t0 = Date()
             do {
+                if wantScreen {   // AX tree walk off the main actor; cached inside for 3 s
+                    let sc = await Task.detached { ScreenContext.gather(focused: c) }.value
+                    req.screen = sc.window + sc.others
+                    if !req.screen.isEmpty { Log.w("screen ctx window=\(sc.window.count) others=\(sc.others.count) chars \(Int(Date().timeIntervalSince(t0) * 1000))ms: \(String(req.screen.prefix(400)).replacingOccurrences(of: "\n", with: " | "))") }
+                }
                 let text = try await Engine.shared.complete(req, custom: custom)
                 guard let self, g == self.gen, !Task.isCancelled else { return }
                 if text.isEmpty { return }
-                Log.w("SHOW completion \(Int(Date().timeIntervalSince(t0) * 1000))ms \(c.appName) [\(c.font.fontName) \(Int(c.fontSize))]: \(text.debugDescription)")
+                Log.w("SHOW completion \(Int(Date().timeIntervalSince(t0) * 1000))ms \(req.model.split(separator: "/").last ?? "") \(c.appName) [\(c.font.fontName) \(Int(c.fontSize))]: \(text.debugDescription)")
                 self.show(.completion(text))
                 if self.settings.p.wordAlternatives, self.settings.p.altTrigger == .pause { self.requestAlternatives(for: text) }
             } catch {
@@ -247,6 +260,10 @@ enum Suggestion: Equatable {
             hideAll(); tap.backspace((word as NSString).length + (trailing as NSString).length); typed(fix + trailing); schedule()
         case .emoji(let code, let e):
             hideAll(); tap.backspace((code as NSString).length + 1); typed(e); schedule()
+        case .fill(let label, let value, _):
+            hideAll()
+            if let el = ctx?.element, FormFill.set(el, value) { Log.w("FILL \(label.debugDescription) via AX") ; sessionAccepted = true } else { typed(value) }
+            schedule()
         case .completion(let text):
             let lead = text.prefix(while: { $0 == " " })
             let rest = text.dropFirst(lead.count)
@@ -283,6 +300,22 @@ enum Suggestion: Equatable {
         suggestion = .completion(String(lead) + item + String(rest.dropFirst(word.count)))
         list.hide(); listItems = []
         acceptWord()
+    }
+
+    // MARK: form fill
+    func fillForm() {
+        guard let w = FormFill.frontWindow() else { Log.w("FILL form: no front window"); return }
+        ctx = AX.focusedContext(); hideAll()
+        let (n, skipped) = FormFill.fillWindow(w, profile: settings.p.fillProfile, includeSensitive: settings.p.fillSensitive)
+        Log.w("FILL form: \(n) filled, \(skipped) sensitive skipped")
+        flash(n == 0 ? (Vault.shared.isEmpty ? "vault is empty" : "no fields matched") : "filled \(n)\(skipped > 0 ? ", \(skipped) sensitive skipped" : "")")
+    }
+    /// A short note at the caret that goes away on its own.
+    private func flash(_ text: String) {
+        guard let c = ctx, let r = c.caretRect else { return }
+        gen += 1
+        ghost.show(text, font: c.font, color: c.textColor.withAlphaComponent(0.6), origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in if self?.suggestion == nil { self?.ghost.hide() } }
     }
 
     // MARK: labs

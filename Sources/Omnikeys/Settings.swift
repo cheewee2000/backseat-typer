@@ -48,12 +48,18 @@ struct Prefs: Codable {
     var tabEnabled = true
     var escBehavior = EscBehavior.pauseBriefly
     var midLine = true
+    var screenContext = true     // read the rest of the window and the windows beside it
     var clipboardAwareness = false   // off: measured to derail the 3B model
     var fullAutocorrect = true
     var emojiSuggestions = true
     var completeInCodeEditors = false
     var completeInTerminals = false
     var model = Models.apple
+    // form fill (vault ported from Form Filler)
+    var formFill = true
+    var fillSensitive = false
+    var fillProfile = "P1"
+    var fillForm: Shortcut? = Shortcut(keyCode: 3, modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue, label: "⌃⌥F")
     // shortcuts
     var nextWord: Shortcut? = Shortcut(keyCode: 48, modifiers: 0, label: "TAB")
     var acceptAll: Shortcut? = Shortcut(keyCode: 50, modifiers: 0, label: "`")
@@ -97,10 +103,16 @@ struct Prefs: Codable {
     var p: Prefs { didSet { save() } }
 
     init() {
-        if let d = UserDefaults.standard.data(forKey: Settings.key), let p = try? JSONDecoder().decode(Prefs.self, from: d) {
-            self.p = p
-        } else { self.p = Prefs() }
+        self.p = UserDefaults.standard.data(forKey: Settings.key).map(Settings.decode) ?? Prefs()
         rollDay()
+    }
+    /// Saved keys over defaults, so a key added in a newer version never throws the whole file away.
+    static func decode(_ d: Data) -> Prefs {
+        if let p = try? JSONDecoder().decode(Prefs.self, from: d) { return p }
+        guard let def = try? JSONEncoder().encode(Prefs()), var base = (try? JSONSerialization.jsonObject(with: def)) as? [String: Any],
+              let saved = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return Prefs() }
+        for (k, v) in saved { base[k] = v }
+        return (try? JSONSerialization.data(withJSONObject: base)).flatMap { try? JSONDecoder().decode(Prefs.self, from: $0) } ?? Prefs()
     }
     private func save() {
         if let d = try? JSONEncoder().encode(p) { UserDefaults.standard.set(d, forKey: Settings.key) }

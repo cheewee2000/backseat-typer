@@ -42,6 +42,12 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
         switch url.host {
         case "type": controller.tap.simulate(text: q["text"] ?? "")
         case "key": if let c = UInt16(q["code"] ?? "") { controller.tap.simulate(key: c) }
+        case "vault": Vault.shared.loadPlain(path: q["file"] ?? "")   // test data, never saved
+        case "fill": controller.fillForm()
+        case "focusfirst":   // focus the first text field of the front window, as a click would
+            if let w = FormFill.frontWindow(), let f = FormFill.firstField(in: w) {
+                AXUIElementSetAttributeValue(f, kAXFocusedAttribute as CFString, kCFBooleanTrue); controller.schedule(after: 300)
+            } else { Log.w("e2e focusfirst: no field") }
         default: break
         }
     }

@@ -39,6 +39,7 @@ struct CompletionRequest {
     var length: CompletionLength
     var british: Bool
     var model = Models.apple
+    var screen = ""   // other text on screen, see ScreenContext
 }
 
 @Observable final class Engine {
@@ -95,6 +96,9 @@ struct CompletionRequest {
         if let c = r.clipboard, !c.isEmpty { ins += "\n\nThe writer's clipboard, which may be relevant:\n\(c.prefix(300))" }
         let afterLine = r.after.prefix(while: { $0 != "\n" })
         if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty { ins += "\n\nThe text after the cursor is: \(afterLine.prefix(200))\nYour words must fit before it." }
+        if !r.screen.isEmpty {
+            ins += "\n\nOther text visible on screen right now (the rest of this window, then windows beside it). Use the names, numbers and facts in it when the sentence calls for them, but do not copy sentences from it:\n\(r.screen.prefix(3200))"
+        }
         ins += "\n\nExample:\nText: I went to the\nContinuation: store to pick up milk"
         let prompt = "Text: \(r.before.suffix(1500))\nContinuation:"
         let tokens: Int

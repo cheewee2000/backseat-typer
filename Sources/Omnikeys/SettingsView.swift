@@ -88,7 +88,7 @@ struct SettingsRoot: View {
     @State private var selectedApp: String?
     @State private var newDomain = ""
     @State private var confirmDelete = false
-    let tabs = ["general", "shortcuts", "apps", "personalization", "labs", "about"]
+    let tabs = ["general", "shortcuts", "apps", "personalization", "vault", "labs", "about"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,6 +109,7 @@ struct SettingsRoot: View {
                     case "shortcuts": shortcuts
                     case "apps": apps
                     case "personalization": personalization
+                    case "vault": VaultView(s: s)
                     case "labs": labs
                     default: about
                     }
@@ -138,6 +139,9 @@ struct SettingsRoot: View {
             Row("Suggest after a pause of (ms)") { TextField("", value: $s.p.debounceMs, format: .number).modifier(Field()).frame(width: 100) }
             Row("Minimum context (characters)") { TextField("", value: $s.p.minContextChars, format: .number).modifier(Field()).frame(width: 100) }
             Toggle("Mid-line completion (suggest with text after the cursor)", isOn: $s.p.midLine).toggleStyle(CWTToggle())
+            Toggle("Form fill (an empty field whose label matches your vault shows the answer; Tab fills it)", isOn: $s.p.formFill).toggleStyle(CWTToggle())
+            Toggle("Include sensitive fields (ID numbers, medical lists) when filling a whole form", isOn: $s.p.fillSensitive).toggleStyle(CWTToggle())
+            Toggle("Screen context (read the rest of the window and the windows beside it, via Accessibility)", isOn: $s.p.screenContext).toggleStyle(CWTToggle())
             Toggle("Clipboard awareness (the clipboard informs suggestions)", isOn: $s.p.clipboardAwareness).toggleStyle(CWTToggle())
             Toggle("Emoji suggestions (type : then a shortcode)", isOn: $s.p.emojiSuggestions).toggleStyle(CWTToggle())
             Toggle("Full autocorrect (Tab applies the typo fix)", isOn: $s.p.fullAutocorrect).toggleStyle(CWTToggle())
@@ -158,6 +162,7 @@ struct SettingsRoot: View {
             ShortcutRecorder(title: "Complete the next word", shortcut: $s.p.nextWord, c: c)
             ShortcutRecorder(title: "Accept the full completion", shortcut: $s.p.acceptAll, c: c)
             ShortcutRecorder(title: "Dismiss suggestion", shortcut: $s.p.dismiss, c: c)
+            ShortcutRecorder(title: "Fill every empty field in this window from the vault", shortcut: $s.p.fillForm, c: c)
             ShortcutRecorder(title: "Force-activate completions here", shortcut: $s.p.forceActivate, c: c)
             ShortcutRecorder(title: "Temporarily toggle in current app", shortcut: $s.p.toggleApp, c: c)
             ShortcutRecorder(title: "Toggle completions globally", shortcut: $s.p.toggleGlobal, c: c)
@@ -274,5 +279,70 @@ struct SettingsRoot: View {
             Rule()
             Text("Version \(s.version) · CW&T").font(.mono(12))
         }
+    }
+}
+
+
+/// The vault tab: one profile per person, Form Filler's schema, import of its encrypted backups.
+struct VaultView: View {
+    @Bindable var s: Settings
+    @Bindable var v = Vault.shared
+    @State private var newField = ""
+    @State private var status = ""
+    var profile: Profile? { v.data.profile(s.p.fillProfile) }
+    var body: some View {
+        Group {
+            H("Profile used for filling")
+            HStack(spacing: 8) {
+                Segments(value: $s.p.fillProfile, options: v.data.profiles.map { ($0.id, $0.name) })
+                Button("add person") {
+                    let id = "P\(v.data.nextP)"; v.data.nextP += 1
+                    v.data.profiles.append(Profile(id: id, name: "Person \(v.data.profiles.count + 1)")); s.p.fillProfile = id; v.save()
+                }.buttonStyle(CWTButton())
+            }
+            if let pr = profile {
+                Row("Name of this profile") { TextField("", text: Binding(get: { pr.name }, set: { n in if let i = v.data.profiles.firstIndex(where: { $0.id == pr.id }) { v.data.profiles[i].name = n; v.save() } })).modifier(Field()).frame(width: 260) }
+                ForEach(v.data.groups, id: \.self) { g in
+                    H(g)
+                    ForEach(v.data.allFields.filter { $0.group == g }) { f in
+                        Row(f.label + (f.sensitive ? " ·" : "")) {
+                            TextField(f.kind == .date ? "YYYY-MM-DD" : "", text: Binding(get: { v.data.value(pr.id, f.key) }, set: { v.data.setValue(pr.id, f.key, $0); v.save() }))
+                                .modifier(Field()).frame(width: f.kind == .list ? 460 : 300)
+                        }
+                    }
+                }
+                H("Custom field")
+                HStack(spacing: 8) {
+                    TextField("Label, e.g. Frequent flyer number", text: $newField).modifier(Field()).frame(width: 300)
+                    Button("add") { guard !newField.isEmpty else { return }; _ = v.data.addCustomField(label: newField, kind: .text, sensitive: false); newField = ""; v.save() }.buttonStyle(CWTButton())
+                }
+            }
+            H("Backup")
+            HStack(spacing: 8) {
+                Button("import form filler backup…") { importBackup() }.buttonStyle(CWTButton())
+                Button("export backup…") { exportBackup() }.buttonStyle(CWTButton())
+                Button("erase vault") { v.erase(); status = "Vault erased." }.buttonStyle(CWTButton())
+            }
+            Text("Same encrypted file as the iPhone and web versions of Form Filler. Everything here is AES-256-GCM encrypted at rest with a key in this Mac's keychain, and never leaves this Mac. Fields marked · are sensitive: shown masked in the ghost text, skipped by whole-form fill unless enabled in General.").font(.mono(12)).frame(maxWidth: 560, alignment: .leading)
+            if !status.isEmpty { Text(status).font(.mono(12)) }
+            if let e = v.loadError { Text(e).font(.mono(12)) }
+        }
+    }
+    func importBackup() {
+        let p = NSOpenPanel(); p.allowedContentTypes = [.json]; p.allowsMultipleSelection = false
+        guard p.runModal() == .OK, let url = p.url, let pass = askPassphrase("Passphrase for this backup") else { return }
+        do { try v.importBackup(url: url, passphrase: pass); status = "Imported \(v.data.profiles.count) profile(s)." } catch { status = error.localizedDescription }
+    }
+    func exportBackup() {
+        guard let pass = askPassphrase("Choose a passphrase for the backup") else { return }
+        let p = NSSavePanel(); p.nameFieldStringValue = "omnikeys-vault-backup.json"
+        guard p.runModal() == .OK, let url = p.url else { return }
+        do { try Backup.export(v.data, passphrase: pass).write(to: url); status = "Backup written." } catch { status = error.localizedDescription }
+    }
+    func askPassphrase(_ title: String) -> String? {
+        let a = NSAlert(); a.messageText = title
+        let f = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24)); a.accessoryView = f
+        a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
+        return a.runModal() == .alertFirstButtonReturn && !f.stringValue.isEmpty ? f.stringValue : nil
     }
 }
