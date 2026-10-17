@@ -7,7 +7,7 @@ final class History {
     struct Sample: Codable { var app: String; var text: String; var ts: Date }
     private(set) var samples: [Sample] = []
     private let url: URL = {
-        let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Omnikeys", isDirectory: true)
+        let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("BackseatTyper", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d.appendingPathComponent("history.json")
     }()

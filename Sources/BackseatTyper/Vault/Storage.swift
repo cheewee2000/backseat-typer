@@ -6,12 +6,16 @@ import CryptoKit
 import CommonCrypto
 
 enum Keychain {
-    static func get(_ account: String) -> Data? {
-        var q = base(account)
+    static func get(_ account: String, service: String = "BackseatTyper") -> Data? {
+        var q = base(account, service: service)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else {
+            // Vaults made before the rename live under the old service name: adopt once.
+            if service == "BackseatTyper", let d = Keychain.get(account, service: "Omnikeys") { set(d, account); return d }
+            return nil
+        }
         return out as? Data
     }
 
@@ -26,10 +30,10 @@ enum Keychain {
 
     static func delete(_ account: String) { SecItemDelete(base(account) as CFDictionary) }
 
-    private static func base(_ account: String) -> [String: Any] {
+    private static func base(_ account: String, service: String = "BackseatTyper") -> [String: Any] {
         var q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Omnikeys",
+            kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
         return q
@@ -50,7 +54,7 @@ enum VaultError: LocalizedError {
 /// The vault on disk: AES-256-GCM with a random key held in the keychain (this device only).
 enum VaultFile {
     static var url: URL {
-        let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Omnikeys", isDirectory: true)
+        let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("BackseatTyper", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d.appendingPathComponent("vault.enc")
     }

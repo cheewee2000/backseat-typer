@@ -29,7 +29,7 @@ extension Vault {
     /// schema lacks (work email, work address, website). Returns the keys it set.
     func importMeCard(into pid: String) async throws -> [String] {
         let store = CNContactStore()
-        guard try await store.requestAccess(for: .contacts) else { throw NSError(domain: "Omnikeys", code: 1, userInfo: [NSLocalizedDescriptionKey: "Contacts access was not allowed."]) }
+        guard try await store.requestAccess(for: .contacts) else { throw NSError(domain: "BackseatTyper", code: 1, userInfo: [NSLocalizedDescriptionKey: "Contacts access was not allowed."]) }
         let keys: [CNKeyDescriptor] = [CNContactGivenNameKey, CNContactMiddleNameKey, CNContactFamilyNameKey, CNContactNicknameKey, CNContactBirthdayKey,
                                        CNContactEmailAddressesKey, CNContactPhoneNumbersKey, CNContactPostalAddressesKey, CNContactOrganizationNameKey,
                                        CNContactJobTitleKey, CNContactUrlAddressesKey] as [CNKeyDescriptor]

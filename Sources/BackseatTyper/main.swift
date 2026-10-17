@@ -27,7 +27,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
     let controller = Controller.shared
 
     // e2e driver: only when launched with --e2e (scripts/e2e.sh). The shell host is not AX-trusted; this app is,
-    // so the test script asks the app to type via omnikeys://type?text=… and omnikeys://key?code=…
+    // so the test script asks the app to type via backseattyper://type?text=… and backseattyper://key?code=…
     let e2e = CommandLine.arguments.contains("--e2e")
     func applicationWillFinishLaunching(_ n: Notification) {
         guard e2e else { return }
@@ -173,7 +173,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
             let i = NSMenuItem(title: t, action: sel, keyEquivalent: key); i.target = self
             i.attributedTitle = NSAttributedString(string: t, attributes: [.font: CWT.font(13)]); return i
         }
-        menu.addItem(item("OMNIKEYS \(on ? "ON" : "OFF") · \(Engine.shared.statusText)", nil))
+        menu.addItem(item("BACKSEAT TYPER \(on ? "ON" : "OFF") · \(Engine.shared.statusText)", nil))
         menu.addItem(item(on ? "Pause completions" : "Resume completions", #selector(togglePause)))
         let rule = s.p.apps.first(where: { $0.id == bundle })
         let appOn = rule?.enabled ?? true
@@ -188,7 +188,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
         menu.addItem(item("Words completed today: \(s.p.wordsToday)", nil))
         menu.addItem(.separator())
         menu.addItem(item("Version \(s.version)", nil))
-        menu.addItem(item("Quit Omnikeys", #selector(NSApplication.terminate(_:)), "q"))
+        menu.addItem(item("Quit Backseat Typer", #selector(NSApplication.terminate(_:)), "q"))
     }
     @objc func togglePause() { controller.pausedGlobally.toggle(); controller.hideAll() }
     @objc func toggleApp(_ sender: NSMenuItem) {
@@ -205,7 +205,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
     @objc func showSettings() {
         if settingsWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            w.title = "Omnikeys"
+            w.title = "Backseat Typer"
             w.appearance = NSAppearance(named: .aqua)
             w.contentView = NSHostingView(rootView: SettingsRoot(s: Settings.shared, c: controller))
             w.isReleasedWhenClosed = false

@@ -132,7 +132,7 @@ struct Prefs: Codable {
 
 enum Log {
     static var lastCaretHow = ""   // which geometry produced the caret rect, for the GHOST log line
-    static let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Omnikeys.log")
+    static let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/BackseatTyper.log")
     static func w(_ s: String) {
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(s)\n"
         print(line, terminator: "")

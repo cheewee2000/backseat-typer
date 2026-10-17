@@ -75,9 +75,9 @@ enum Matcher {
         guard !t.isEmpty else { return "" }
         let n = norm(t)
         for c in vault.custom where !norm(c.label).isEmpty && n.contains(norm(c.label)) {
-            return "{\(pid).\(c.key)\(c.kind == .date ? "|MM/DD/YYYY" : c.kind == .list ? "|lines" : "")}"   // Omnikeys: learned textareas keep their lines
+            return "{\(pid).\(c.key)\(c.kind == .date ? "|MM/DD/YYYY" : c.kind == .list ? "|lines" : "")}"   // BackseatTyper: learned textareas keep their lines
         }
-        if let c = fuzzyCustom(t, vault: vault) {   // Omnikeys: learned fields match on content words
+        if let c = fuzzyCustom(t, vault: vault) {   // BackseatTyper: learned fields match on content words
             return "{\(pid).\(c.key)\(c.kind == .date ? "|MM/DD/YYYY" : c.kind == .list ? "|lines" : "")}"
         }
         let range = NSRange(location: 0, length: (t as NSString).length)

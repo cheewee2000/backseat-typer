@@ -93,7 +93,7 @@ struct SettingsRoot: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Text("OMNIKEYS").font(.mono(14)).tracking(0.6).foregroundStyle(.white).padding(.horizontal, 20)
+                Text("BACKSEAT TYPER").font(.mono(14)).tracking(0.6).foregroundStyle(.white).padding(.horizontal, 20)
                 ForEach(tabs, id: \.self) { t in
                     Button { tab = t } label: {
                         Text(t).font(.mono(14)).textCase(.uppercase).foregroundStyle(tab == t ? .black : .white)
@@ -219,7 +219,7 @@ struct SettingsRoot: View {
         Group {
             Toggle("Record your writing for personalization", isOn: $s.p.recording).toggleStyle(CWTToggle())
             Toggle("Record text even when you accept no suggestion", isOn: $s.p.recordAll).toggleStyle(CWTToggle())
-            Text("Recorded text stays on this Mac, in ~/Library/Application Support/Omnikeys. Texts under 80 characters are skipped.").font(.mono(12))
+            Text("Recorded text stays on this Mac, in ~/Library/Application Support/BackseatTyper. Texts under 80 characters are skipped.").font(.mono(12))
             H("Personalize word choice")
             Segments(value: $s.p.personalization, options: [(0, "off"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "max")])
             Text("How strongly your typing history steers suggestions. Only has an effect once some history exists. Start around 3.").font(.mono(12))
@@ -254,7 +254,7 @@ struct SettingsRoot: View {
 
     var about: some View {
         Group {
-            Text("Omnikeys").font(.mono(30))
+            Text("Backseat Typer").font(.mono(30))
             Text("Predictive text for every Mac text field. Private and on-device: your words never leave this Mac. macOS blocks reading password fields.").font(.mono(14)).frame(maxWidth: 600, alignment: .leading)
             H("Permissions")
             Row("Accessibility") {
@@ -331,7 +331,7 @@ struct VaultView: View {
     }
     func exportBackup() {
         guard let pass = askPassphrase("Choose a passphrase for the backup") else { return }
-        let p = NSSavePanel(); p.nameFieldStringValue = "omnikeys-vault-backup.json"
+        let p = NSSavePanel(); p.nameFieldStringValue = "backseattyper-vault-backup.json"
         guard p.runModal() == .OK, let url = p.url else { return }
         do { try Backup.export(v.data, passphrase: pass).write(to: url); status = "Backup written." } catch { status = error.localizedDescription }
     }

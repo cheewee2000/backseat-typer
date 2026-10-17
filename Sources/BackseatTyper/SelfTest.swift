@@ -1,6 +1,6 @@
 import AppKit
 
-/// `Omnikeys --selftest`: the one runnable check. Fails loudly if the engine, cleaner, spell fixer or emoji table break.
+/// `BackseatTyper --selftest`: the one runnable check. Fails loudly if the engine, cleaner, spell fixer or emoji table break.
 enum SelfTest {
     static func run() -> Bool {
         var ok = true
@@ -65,9 +65,9 @@ enum SelfTest {
         if e.available {
             var done = false
             var out = "", ms = 0, err = ""
-            let modelID = ProcessInfo.processInfo.environment["OMNIKEYS_MODEL"] ?? Models.apple
-            // OMNIKEYS_BENCH=1: the same contexts through whichever model, output and latency per line.
-            let bench = ProcessInfo.processInfo.environment["OMNIKEYS_BENCH"] != nil
+            let modelID = ProcessInfo.processInfo.environment["BACKSEAT_MODEL"] ?? Models.apple
+            // BACKSEAT_BENCH=1: the same contexts through whichever model, output and latency per line.
+            let bench = ProcessInfo.processInfo.environment["BACKSEAT_BENCH"] != nil
             let contexts = bench ? ["What are we doing with all this stuff", "Elizabeth Holmes is the", "I went to the store to buy some",
                                     "Hey, are you free for lunch on", "The bench has a rocker sole so it", "Can you send me the invoice for the",
                                     // echo-prone: agent prompt lines and text that quotes itself
@@ -146,7 +146,7 @@ enum SelfTest {
                 done = true
             }
             // Pump the main run loop instead of blocking it: the MLX loader runs on the main actor.
-            let mlx = ProcessInfo.processInfo.environment["OMNIKEYS_MODEL"] != nil
+            let mlx = ProcessInfo.processInfo.environment["BACKSEAT_MODEL"] != nil
             let deadline = Date().addingTimeInterval(mlx ? 900 : 30)
             var lastState = ""
             while !done && Date() < deadline {
@@ -155,7 +155,7 @@ enum SelfTest {
             }
             check("completion non-empty", !out.isEmpty, "\(ms)ms \(out.debugDescription) \(err)")
             check("completion starts with space", out.hasPrefix(" "), out.debugDescription)
-            check("completion under 3s", ms < 3000 || ProcessInfo.processInfo.environment["OMNIKEYS_MODEL"] != nil, "\(ms)ms")
+            check("completion under 3s", ms < 3000 || ProcessInfo.processInfo.environment["BACKSEAT_MODEL"] != nil, "\(ms)ms")
         }
         print(ok ? "SELFTEST PASS" : "SELFTEST FAIL")
         return ok

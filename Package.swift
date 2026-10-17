@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Omnikeys",
+    name: "BackseatTyper",
     platforms: [.macOS("26.0")],
     dependencies: [
         // Open-weight models (Gemma 4, Qwen), the ones Cotypist ships, run through MLX.
@@ -12,7 +12,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "Omnikeys",
+            name: "BackseatTyper",
             dependencies: [
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
@@ -20,7 +20,7 @@ let package = Package(
                 .product(name: "HuggingFace", package: "swift-huggingface"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
             ],
-            path: "Sources/Omnikeys",
+            path: "Sources/BackseatTyper",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedFramework("AppKit"),
