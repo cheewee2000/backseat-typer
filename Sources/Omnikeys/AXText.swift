@@ -92,7 +92,7 @@ enum AX {
             }
         }
         var font: NSFont? = nil
-        var color: NSColor = .textColor
+        var color: NSColor = .black   // not .textColor: in dark mode that resolves to white, invisible on a white form field
         if caret > 0, let a = param(element, kAXAttributedStringForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret - 1, length: 1))) as? NSAttributedString, a.length > 0 {
             let attrs = a.attributes(at: 0, effectiveRange: nil)
             if let f = attrs[NSAttributedString.Key("AXFont")] as? [String: Any] {

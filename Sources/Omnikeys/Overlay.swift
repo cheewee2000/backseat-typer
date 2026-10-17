@@ -20,6 +20,7 @@ final class OverlayPanel {
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.appearance = NSAppearance(named: .aqua)   // ghost colours come from the field itself, never from the system theme
         let v = NSView()
         v.wantsLayer = true
         if bordered { v.layer?.backgroundColor = NSColor.white.cgColor; v.layer?.borderColor = NSColor.black.cgColor; v.layer?.borderWidth = 1 }

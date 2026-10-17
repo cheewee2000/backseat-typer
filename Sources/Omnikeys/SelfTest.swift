@@ -15,6 +15,12 @@ enum SelfTest {
         check("word cap", Engine.clean(before: "a b", raw: " one two three four five", maxWords: 3) == " one two three", Engine.clean(before: "a b", raw: " one two three four five", maxWords: 3).debugDescription)
         check("label echo dropped", Engine.clean(before: "I had a look at the sketches.", raw: "continuation", maxWords: 8) == "")
         check("single line", Engine.clean(before: "Hi", raw: " there\nmore", maxWords: 8) == " there")
+        // learned-field fuzzy matching
+        var vd = VaultData()
+        let k = vd.addCustomField(label: "Tell us about yourself", kind: .list, sensitive: false); vd.setValue("P1", k, "Maker.")
+        check("fuzzy label match", Matcher.match("Describe yourself", pid: "P1", vault: vd) == "{P1.\(k)|lines}", Matcher.match("Describe yourself", pid: "P1", vault: vd))
+        check("fuzzy no false match", Matcher.match("City", pid: "P1", vault: vd) == "{P1.city}", Matcher.match("City", pid: "P1", vault: vd))
+        check("schema beats weak fuzzy", Matcher.match("Reason for your visit", pid: "P1", vault: vd) == "", Matcher.match("Reason for your visit", pid: "P1", vault: vd))
         // emoji
         check("emoji prefix", Emoji.matches("smi").first?.1 == "😄")
         check("emoji +1", Emoji.matches("+1").first?.1 == "👍")
