@@ -39,6 +39,7 @@ enum FormFill {
         return Match(element: el, label: l, value: v, sensitive: Template.isSensitive(tpl, vault))
     }
 
+    static func isField(_ c: FocusContext) -> Bool { fieldRoles.contains(c.role) && c.subrole != "AXSearchField" && !c.isSecure }
     static func isEmptyField(_ c: FocusContext) -> Bool {
         fieldRoles.contains(c.role) && c.subrole != "AXSearchField" && c.before.isEmpty && c.after.isEmpty && !c.isSecure
     }
@@ -64,12 +65,12 @@ enum FormFill {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         return AX.attr(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute as String).map { $0 as! AXUIElement }
     }
-    /// First empty text field in the window, for the e2e driver to focus.
-    static func firstField(in w: AXUIElement) -> AXUIElement? {
+    /// First text field in the window (optionally by label), for the e2e driver to focus.
+    static func firstField(in w: AXUIElement, labelled: String? = nil) -> AXUIElement? {
         var queue = [w], nodes = 0
         while !queue.isEmpty, nodes < 1500 {
             let e = queue.removeFirst(); nodes += 1
-            if fieldRoles.contains(AX.attr(e, kAXRoleAttribute as String) as? String ?? "") { return e }
+            if fieldRoles.contains(AX.attr(e, kAXRoleAttribute as String) as? String ?? ""), labelled.map({ label(of: e).localizedCaseInsensitiveContains($0) }) ?? true { return e }
             if let kids = AX.attr(e, kAXChildrenAttribute as String) as? [AXUIElement] { queue.append(contentsOf: kids.prefix(300)) }
         }
         return nil
@@ -97,3 +98,34 @@ enum FormFill {
 }
 
 extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
+
+
+/// Remembers what you type into labelled fields, into the vault, so the next form with the same label fills itself.
+enum FormLearn {
+    private static let skip = try! NSRegularExpression(pattern: #"search|password|passcode|\bpin\b|cvv|cvc|card number|security code|captcha|message|reply|chat|prompt|otp|verification code"#, options: [.caseInsensitive])
+    static func clean(_ raw: String) -> String {
+        var l = raw.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        l = l.replacingOccurrences(of: #"\s*(\(required\)|\(optional\)|required|optional|\*|:)+\s*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return String(l.trimmingCharacters(in: .whitespaces).prefix(60))
+    }
+    static func remember(label raw: String, value: String, multiline: Bool, profile: String) {
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines), label = clean(raw)
+        guard (3...60).contains(label.count), (1...2000).contains(v.count),
+              skip.firstMatch(in: label, range: NSRange(location: 0, length: (label as NSString).length)) == nil,
+              v.filter(\.isNumber).count < 13 else { return }   // never a card number
+        let vault = Vault.shared
+        let tpl = Matcher.match(label, pid: profile, vault: vault.data)
+        if tpl.isEmpty {
+            let key = vault.data.addCustomField(label: label, kind: multiline ? .list : .text, sensitive: false)
+            vault.data.setValue(profile, key, v)
+        } else {
+            // Only a plain single-field template: an empty schema field, or a learned field whose answer changed.
+            let refs = Template.refs(in: tpl)
+            guard refs.count == 1, let ref = refs.first, tpl == "{\(ref.pid).\(ref.key)}" || tpl.hasSuffix("|lines}"), let f = vault.data.field(ref.key), f.kind != .date else { return }
+            let current = vault.data.value(profile, ref.key)
+            guard current.isEmpty || (f.custom && current != v) else { return }
+            vault.data.setValue(profile, ref.key, v)
+        }
+        vault.save(); Log.w("LEARN \(label.debugDescription) (\(v.count) chars)")
+    }
+}

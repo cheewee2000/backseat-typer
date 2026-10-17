@@ -1,4 +1,4 @@
-// Ported unchanged from Form Filler (iOS) Shared/Matcher.swift.
+// Ported from Form Filler (one change, marked) (iOS) Shared/Matcher.swift.
 import Foundation
 
 /// On-device label matching. No network. Mirrors the web version's rules.
@@ -75,7 +75,7 @@ enum Matcher {
         guard !t.isEmpty else { return "" }
         let n = norm(t)
         for c in vault.custom where !norm(c.label).isEmpty && n.contains(norm(c.label)) {
-            return "{\(pid).\(c.key)\(c.kind == .date ? "|MM/DD/YYYY" : "")}"
+            return "{\(pid).\(c.key)\(c.kind == .date ? "|MM/DD/YYYY" : c.kind == .list ? "|lines" : "")}"   // Omnikeys: learned textareas keep their lines
         }
         let range = NSRange(location: 0, length: (t as NSString).length)
         for (re, tpl) in rules where re.firstMatch(in: t, range: range) != nil {

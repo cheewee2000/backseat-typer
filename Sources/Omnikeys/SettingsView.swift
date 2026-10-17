@@ -140,6 +140,7 @@ struct SettingsRoot: View {
             Row("Minimum context (characters)") { TextField("", value: $s.p.minContextChars, format: .number).modifier(Field()).frame(width: 100) }
             Toggle("Mid-line completion (suggest with text after the cursor)", isOn: $s.p.midLine).toggleStyle(CWTToggle())
             Toggle("Form fill (an empty field whose label matches your vault shows the answer; Tab fills it)", isOn: $s.p.formFill).toggleStyle(CWTToggle())
+            Toggle("Learn from forms (what you type into a labelled field is remembered for the next form with that label)", isOn: $s.p.learnForms).toggleStyle(CWTToggle())
             Toggle("Include sensitive fields (ID numbers, medical lists) when filling a whole form", isOn: $s.p.fillSensitive).toggleStyle(CWTToggle())
             Toggle("Screen context (read the rest of the window and the windows beside it, via Accessibility)", isOn: $s.p.screenContext).toggleStyle(CWTToggle())
             Toggle("Clipboard awareness (the clipboard informs suggestions)", isOn: $s.p.clipboardAwareness).toggleStyle(CWTToggle())
@@ -306,8 +307,9 @@ struct VaultView: View {
                     H(g)
                     ForEach(v.data.allFields.filter { $0.group == g }) { f in
                         Row(f.label + (f.sensitive ? " ·" : "")) {
-                            TextField(f.kind == .date ? "YYYY-MM-DD" : "", text: Binding(get: { v.data.value(pr.id, f.key) }, set: { v.data.setValue(pr.id, f.key, $0); v.save() }))
+                            TextField(f.kind == .date ? "YYYY-MM-DD" : "", text: Binding(get: { v.data.value(pr.id, f.key) }, set: { v.data.setValue(pr.id, f.key, $0); v.save() }), axis: f.kind == .list ? .vertical : .horizontal)
                                 .modifier(Field()).frame(width: f.kind == .list ? 460 : 300)
+                            if f.custom { Button("×") { v.data.custom.removeAll { $0.key == f.key }; for i in v.data.profiles.indices { v.data.profiles[i].values[f.key] = nil }; v.save() }.buttonStyle(.plain).font(.mono(14)) }
                         }
                     }
                 }

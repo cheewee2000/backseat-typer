@@ -47,7 +47,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
         case "importcontacts":
             Task { do { let k = try await Vault.shared.importMeCard(into: Settings.shared.p.fillProfile); Log.w("vault import from Contacts: \(k)") } catch { Log.w("vault import failed: \(error.localizedDescription)") } }
         case "focusfirst":   // focus the first text field of the front window, as a click would
-            if let w = FormFill.frontWindow(), let f = FormFill.firstField(in: w) {
+            if let w = FormFill.frontWindow(), let f = FormFill.firstField(in: w, labelled: q["label"]) {
                 AXUIElementSetAttributeValue(f, kAXFocusedAttribute as CFString, kCFBooleanTrue); controller.schedule(after: 300)
             } else { Log.w("e2e focusfirst: no field") }
         default: break

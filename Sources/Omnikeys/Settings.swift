@@ -58,6 +58,7 @@ struct Prefs: Codable {
     // form fill (vault ported from Form Filler)
     var formFill = true
     var fillSensitive = false
+    var learnForms = true
     var fillProfile = "P1"
     var fillForm: Shortcut? = Shortcut(keyCode: 3, modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue, label: "⌃⌥F")
     // shortcuts

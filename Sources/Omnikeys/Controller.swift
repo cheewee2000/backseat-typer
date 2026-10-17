@@ -42,6 +42,7 @@ enum Suggestion: Equatable {
     private var lastElement: AXUIElement?
     private var lastText = ""
     private var lastApp = ""
+    private var lastField: (label: String, multiline: Bool)?   // the labelled form field last focused, for learning
     private var sessionAccepted = false
     /// Set by the Shortcuts pane: the next key press is captured instead of handled.
     var recorder: ((Shortcut) -> Void)?
@@ -214,8 +215,10 @@ enum Suggestion: Equatable {
     private func trackRecording(_ c: FocusContext) {
         let same = lastElement.map { CFEqual($0, c.element) } ?? false
         if !same {
+            if settings.p.learnForms, let f = lastField { FormLearn.remember(label: f.label, value: lastText, multiline: f.multiline, profile: settings.p.fillProfile) }
             flushRecording()
             lastElement = c.element; lastApp = c.bundleID; sessionAccepted = false
+            lastField = FormFill.isField(c) ? (FormFill.label(of: c.element), c.role == "AXTextArea") : nil
         }
         lastText = c.before + c.after
     }
