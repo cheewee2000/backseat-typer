@@ -22,8 +22,7 @@ final class OverlayPanel {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         let v = NSView()
         v.wantsLayer = true
-        v.layer?.backgroundColor = CWT.gray.cgColor
-        if bordered { v.layer?.borderColor = NSColor.black.cgColor; v.layer?.borderWidth = 1 }
+        if bordered { v.layer?.backgroundColor = NSColor.white.cgColor; v.layer?.borderColor = NSColor.black.cgColor; v.layer?.borderWidth = 1 }
         label.textColor = .black
         label.backgroundColor = .clear
         label.isBezeled = false
@@ -33,8 +32,9 @@ final class OverlayPanel {
         v.addSubview(label)
         panel.contentView = v
     }
-    func show(_ text: String, fontSize: CGFloat, origin: CGPoint, lineHeight: CGFloat? = nil, rtl: Bool = false) {
-        label.font = CWT.font(fontSize)
+    func show(_ text: String, font: NSFont, color: NSColor, origin: CGPoint, lineHeight: CGFloat? = nil, rtl: Bool = false) {
+        label.font = font
+        label.textColor = color
         label.stringValue = text
         label.baseWritingDirection = rtl ? .rightToLeft : .natural
         label.alignment = rtl ? .right : .left

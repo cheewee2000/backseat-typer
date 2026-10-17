@@ -13,7 +13,9 @@ struct FocusContext {
     var selected: String
     var caret: Int
     var caretRect: CGRect?   // AppKit coordinates
-    var fontSize: CGFloat
+    var font: NSFont          // the font at the caret, so ghost text matches the context
+    var textColor: NSColor
+    var fontSize: CGFloat { font.pointSize }
     var isSecure: Bool { subrole == (kAXSecureTextFieldSubrole as String) }
 }
 
@@ -89,15 +91,22 @@ enum AX {
                 rect = CGRect(x: f.minX + 6, y: f.minY + 4, width: 0, height: min(18, f.height - 8))
             }
         }
-        var fontSize: CGFloat = 0
+        var font: NSFont? = nil
+        var color: NSColor = .textColor
         if caret > 0, let a = param(element, kAXAttributedStringForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret - 1, length: 1))) as? NSAttributedString, a.length > 0 {
             let attrs = a.attributes(at: 0, effectiveRange: nil)
-            if let f = attrs[NSAttributedString.Key("AXFont")] as? [String: Any], let sz = f["AXFontSize"] as? CGFloat { fontSize = sz }
-            else if let f = attrs[.font] as? NSFont { fontSize = f.pointSize }
+            if let f = attrs[NSAttributedString.Key("AXFont")] as? [String: Any] {
+                let sz = f["AXFontSize"] as? CGFloat ?? 13
+                font = (f["AXFontName"] as? String).flatMap { NSFont(name: $0, size: sz) }
+                    ?? (f["AXFontFamily"] as? String).flatMap { NSFont(name: $0, size: sz) } ?? NSFont.systemFont(ofSize: sz)
+            } else if let f = attrs[.font] as? NSFont { font = f }
+            if let cg = attrs[NSAttributedString.Key("AXForegroundColor")], CFGetTypeID(cg as CFTypeRef) == CGColor.typeID,
+               let c = NSColor(cgColor: cg as! CGColor) { color = c }
+            else if let c = attrs[.foregroundColor] as? NSColor { color = c }
         }
-        if fontSize == 0 { fontSize = max(11, min(28, (rect?.height ?? 18) * 0.72)) }
+        let fallbackSize = max(11, min(28, (rect?.height ?? 18) * 0.72))
         return FocusContext(element: element, pid: pid, bundleID: app?.bundleIdentifier ?? "pid.\(pid)", appName: app?.localizedName ?? "App",
                             role: role, subrole: subrole, before: before ?? "", after: after ?? "", selected: selected,
-                            caret: caret, caretRect: rect, fontSize: fontSize)
+                            caret: caret, caretRect: rect, font: font ?? NSFont.systemFont(ofSize: fallbackSize), textColor: color)
     }
 }

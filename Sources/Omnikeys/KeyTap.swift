@@ -57,6 +57,27 @@ final class KeyTap {
         }
     }
     func backspace(_ n: Int) { press(51, times: n) }
+
+    // Test driver only (app launched with --e2e): unmarked events the tap treats as real user input.
+    private lazy var userSource = CGEventSource(stateID: .combinedSessionState)
+    func simulate(text: String) {
+        DispatchQueue.global().async {
+            for ch in text {
+                var u = Array(String(ch).utf16)
+                for down in [true, false] {
+                    let e = CGEvent(keyboardEventSource: self.userSource, virtualKey: 0, keyDown: down)
+                    e?.keyboardSetUnicodeString(stringLength: u.count, unicodeString: &u)
+                    e?.post(tap: .cghidEventTap)
+                }
+                usleep(15_000)
+            }
+        }
+    }
+    func simulate(key code: UInt16) {
+        for down in [true, false] {
+            CGEvent(keyboardEventSource: userSource, virtualKey: code, keyDown: down)?.post(tap: .cghidEventTap)
+        }
+    }
     func char(of event: CGEvent) -> String {
         var len = 0; var buf = [UniChar](repeating: 0, count: 4)
         event.keyboardGetUnicodeString(maxStringLength: 4, actualStringLength: &len, unicodeString: &buf)

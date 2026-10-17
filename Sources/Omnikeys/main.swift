@@ -26,8 +26,28 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
     var settingsWindow: NSWindow?
     let controller = Controller.shared
 
+    // e2e driver: only when launched with --e2e (scripts/e2e.sh). The shell host is not AX-trusted; this app is,
+    // so the test script asks the app to type via omnikeys://type?text=… and omnikeys://key?code=…
+    let e2e = CommandLine.arguments.contains("--e2e")
+    func applicationWillFinishLaunching(_ n: Notification) {
+        guard e2e else { return }
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleURL(_:_:)),
+            forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+    }
+    @objc func handleURL(_ event: NSAppleEventDescriptor, _ reply: NSAppleEventDescriptor) {
+        guard e2e, let s = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URLComponents(string: s) else { return }
+        Log.w("e2e url \(s)")
+        let q = Dictionary((url.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
+        switch url.host {
+        case "type": controller.tap.simulate(text: q["text"] ?? "")
+        case "key": if let c = UInt16(q["code"] ?? "") { controller.tap.simulate(key: c) }
+        default: break
+        }
+    }
+
     func applicationDidFinishLaunching(_ n: Notification) {
-        Log.w("launch v\(Settings.shared.version) model=\(Engine.shared.statusText) ax=\(AXIsProcessTrusted())")
+        Log.w("launch v\(Settings.shared.version) model=\(Engine.shared.statusText) ax=\(AXIsProcessTrusted()) e2e=\(e2e)")
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.font = CWT.font(14)
         statusItem.button?.title = "¶"

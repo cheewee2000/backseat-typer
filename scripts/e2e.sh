@@ -8,7 +8,9 @@ BIN="$HOME/Applications/Omnikeys.app/Contents/MacOS/Omnikeys"
 "$BIN" --selftest | tail -1
 pkill -x Omnikeys 2>/dev/null || true; sleep 0.5
 : > ~/Library/Logs/Omnikeys.log
-"$BIN" >/dev/null 2>&1 &
+# open, not exec: TCC attributes a shell-exec to the untrusted shell host. --e2e enables the omnikeys:// driver,
+# because System Events keystrokes from this shell are refused for the same reason.
+open "$HOME/Applications/Omnikeys.app" --args --e2e
 sleep 3
 grep -q "tap started" ~/Library/Logs/Omnikeys.log && echo "PASS tap started" || { echo "FAIL tap not started (Accessibility?)"; grep launch ~/Library/Logs/Omnikeys.log; exit 1; }
 osascript <<'AS'
@@ -16,19 +18,37 @@ tell application "TextEdit"
   activate
   make new document
 end tell
-delay 1
-tell application "System Events"
-  keystroke "Dear Taylor, thanks for sending the drawings over. I had a look at the"
-end tell
 AS
-sleep 3
+sleep 1
+open -g "omnikeys://type?text=Dear%20Taylor%2C%20thanks%20for%20sending%20the%20drawings%20over.%20I%20had%20a%20look%20at%20the"
+sleep 5
 if grep -q "SHOW completion" ~/Library/Logs/Omnikeys.log; then echo "PASS suggestion shown: $(grep "SHOW completion" ~/Library/Logs/Omnikeys.log | tail -1 | cut -c25-)"; else echo "FAIL no suggestion"; tail -5 ~/Library/Logs/Omnikeys.log; fi
 BEFORE=$(osascript -e 'tell application "TextEdit" to get text of front document')
-osascript -e 'tell application "System Events" to key code 48'   # Tab = next word
+open -g "omnikeys://key?code=48"   # Tab = next word
 sleep 1
-osascript -e 'tell application "System Events" to key code 50'   # ` = accept all
+open -g "omnikeys://key?code=50"   # ` = accept all
 sleep 1.5
 AFTER=$(osascript -e 'tell application "TextEdit" to get text of front document')
 echo "before: $BEFORE"; echo "after:  $AFTER"
 [ ${#AFTER} -gt ${#BEFORE} ] && echo "PASS text inserted via Tab/backtick" || echo "FAIL nothing inserted"
+osascript -e 'tell application "TextEdit" to close front document saving no' >/dev/null 2>&1 || true
+
+# loop 2: typo autocorrect (Tab on "teh" -> "the") and emoji shortcode (Tab on ":smile" -> emoji)
+osascript -e 'tell application "TextEdit" to activate' -e 'tell application "TextEdit" to make new document' >/dev/null
+sleep 1
+open -g "omnikeys://type?text=I%20think%20teh%20"; sleep 2   # typo check waits for a word boundary
+open -g "omnikeys://key?code=48"; sleep 1
+T=$(osascript -e 'tell application "TextEdit" to get text of front document')
+[[ "$T" == *"I think the "* ]] && echo "PASS typo fixed: $T" || echo "FAIL typo: $T"
+open -g "omnikeys://type?text=%20%3Asmile"; sleep 2
+open -g "omnikeys://key?code=48"; sleep 1
+T=$(osascript -e 'tell application "TextEdit" to get text of front document')
+[[ "$T" == *"😄"* ]] && echo "PASS emoji inserted: $T" || echo "FAIL emoji: $T"
+# loop 3: Esc dismisses the ghost text
+open -g "omnikeys://type?text=%20and%20then%20we%20went%20to"; sleep 4
+open -g "omnikeys://key?code=53"; sleep 0.5
+B=$(osascript -e 'tell application "TextEdit" to get text of front document')
+open -g "omnikeys://key?code=48"; sleep 1
+A=$(osascript -e 'tell application "TextEdit" to get text of front document')
+[ ${#A} -eq $((${#B}+1)) ] && echo "PASS esc dismissed, Tab passed through" || echo "FAIL esc: '$B' -> '$A'"
 osascript -e 'tell application "TextEdit" to close front document saving no' >/dev/null 2>&1 || true

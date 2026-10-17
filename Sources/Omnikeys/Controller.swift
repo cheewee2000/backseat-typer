@@ -155,13 +155,13 @@ enum Suggestion: Equatable {
         let lastWord = String(c.before.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).last ?? "")
         if p.emojiSuggestions, lastWord.hasPrefix(":"), lastWord.count >= 3, c.before.last != " ",
            let m = Emoji.matches(String(lastWord.dropFirst())).first {
-            show(.emoji(code: m.0, emoji: m.1), fontSize: c.fontSize); return
+            show(.emoji(code: m.0, emoji: m.1)); return
         }
         if let last = c.before.last, " .,;:!?\n".contains(last) {
             let trailing = String(c.before.reversed().prefix(while: { " .,;:!?\n".contains($0) }).reversed())
             let word = String(c.before.dropLast(trailing.count).reversed().prefix(while: { $0.isLetter || $0 == "'" }).reversed())
             if let fix = Spell.fix(word) {
-                show(.typo(word: word, fix: fix, trailing: trailing), fontSize: c.fontSize)
+                show(.typo(word: word, fix: fix, trailing: trailing))
                 return
             }
         }
@@ -183,8 +183,8 @@ enum Suggestion: Equatable {
                 let text = try await Engine.shared.complete(req, custom: custom)
                 guard let self, g == self.gen, !Task.isCancelled else { return }
                 if text.isEmpty { return }
-                Log.w("SHOW completion \(Int(Date().timeIntervalSince(t0) * 1000))ms \(c.appName): \(text.debugDescription)")
-                self.show(.completion(text), fontSize: c.fontSize)
+                Log.w("SHOW completion \(Int(Date().timeIntervalSince(t0) * 1000))ms \(c.appName) [\(c.font.fontName) \(Int(c.fontSize))]: \(text.debugDescription)")
+                self.show(.completion(text))
                 if self.settings.p.wordAlternatives, self.settings.p.altTrigger == .pause { self.requestAlternatives(for: text) }
             } catch {
                 if g == self?.gen ?? -1 { Log.w("model error: \(error)") }
@@ -215,10 +215,11 @@ enum Suggestion: Equatable {
     }
 
     // MARK: show / hide
-    private func show(_ s: Suggestion, fontSize: CGFloat? = nil) {
+    private func show(_ s: Suggestion) {
         suggestion = s
         guard let c = ctx, let r = c.caretRect else { return }
-        ghost.show(s.display, fontSize: fontSize ?? c.fontSize, origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
+        // context font, faded: the suggestion looks like what you're typing, just not yet committed
+        ghost.show(s.display, font: c.font, color: c.textColor.withAlphaComponent(0.4), origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
     }
     func hideAll() { suggestion = nil; listItems = []; ghost.hide(); list.hide(); gen += 1; task?.cancel() }
     private func showList(_ items: [String]) {
@@ -226,12 +227,13 @@ enum Suggestion: Equatable {
         guard !listItems.isEmpty, let c = ctx, let r = c.caretRect else { return }
         let text = listItems.enumerated().map { "\($0.offset + 1) \($0.element)" }.joined(separator: "\n")
         let h = CGFloat(listItems.count) * (c.fontSize * 1.5 + 2)
-        list.show(text, fontSize: c.fontSize, origin: CGPoint(x: r.minX, y: r.minY - h - 4), lineHeight: h)
+        list.show(text, font: c.font, color: .black, origin: CGPoint(x: r.minX, y: r.minY - h - 4), lineHeight: h)
     }
 
     // MARK: accept
     private func countWords(_ s: String) -> Int { s.split(whereSeparator: { $0 == " " }).count }
     private func typed(_ s: String) {
+        Log.w("TYPE \(s.debugDescription)")
         tap.type(s)
         settings.rollDay()
         settings.p.wordsToday += countWords(s); settings.p.wordsTotal += countWords(s)
@@ -263,13 +265,14 @@ enum Suggestion: Equatable {
         }
     }
     func acceptAll() {
+        Log.w("acceptAll suggestion=\(String(describing: suggestion))")
         guard case .completion(let text)? = suggestion else { acceptWord(); return }
         hideAll(); typed(text); schedule()
     }
     private func reposition() {
         guard case .completion(let text)? = suggestion, let c = AX.focusedContext() else { return }
         ctx = c
-        show(.completion(text), fontSize: c.fontSize)
+        show(.completion(text))
     }
     private func pick(_ item: String) {
         if listIsSynonyms { hideAll(); typed(item); schedule(); return }
