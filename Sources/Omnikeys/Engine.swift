@@ -24,11 +24,6 @@ enum Models {
     @Guide(description: "The next few words that continue the text exactly from the cursor. Start with a space if a new word begins there. No quotes, no explanation.")
     var text: String
 }
-@Generable struct WordList {
-    @Guide(description: "Single words or very short phrases, most likely first.", .count(3...5))
-    var words: [String]
-}
-
 struct CompletionRequest {
     var before: String
     var after: String
@@ -133,20 +128,6 @@ struct CompletionRequest {
         mlxLoads[id] = t
         do { let c = try await t.value; mlxState[id] = "READY"; return c }
         catch { mlxState[id] = "FAILED: \(error.localizedDescription)"; mlxLoads[id] = nil; throw error }
-    }
-
-    func alternatives(_ r: CompletionRequest, firstWord: String, custom: String) async throws -> [String] {
-        let session = LanguageModelSession(model: model, instructions: instructions(r, custom: custom))
-        let prompt = "Text before the cursor:\n\(r.before.suffix(800))\n\nThe suggested next word is \"\(firstWord)\". List other plausible next words instead of it."
-        let out = try await session.respond(to: prompt, generating: WordList.self, options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 60)).content.words
-        return out.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty && $0.lowercased() != firstWord.lowercased() }
-    }
-
-    func synonyms(selection: String, before: String, after: String, british: Bool) async throws -> [String] {
-        let session = LanguageModelSession(model: model, instructions: "You suggest synonyms that fit a sentence. Output only words.\(british ? " Use British English spelling." : "")")
-        let prompt = "Sentence: \(before.suffix(300))[\(selection)]\(after.prefix(200))\n\nGive synonyms for the bracketed words that fit this sentence, matching its case and grammar."
-        let out = try await session.respond(to: prompt, generating: WordList.self, options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 60)).content.words
-        return out.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty && $0.lowercased() != selection.lowercased() }
     }
 
     /// Normalizes raw model output into a ghost-text continuation.

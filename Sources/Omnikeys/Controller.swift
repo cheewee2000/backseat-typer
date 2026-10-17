@@ -20,15 +20,12 @@ enum Suggestion: Equatable {
     static let shared = Controller()
     let tap = KeyTap()
     let ghost = OverlayPanel(bordered: false)
-    let list = OverlayPanel(bordered: true)
     let settings = Settings.shared
     var tapRunning = false
     var accessibilityTrusted = false
 
     private(set) var ctx: FocusContext?
     private(set) var suggestion: Suggestion?
-    private var listItems: [String] = []
-    private var listIsSynonyms = false
     private var gen = 0
     private var pending: DispatchWorkItem?
     private var task: Task<Void, Never>?
@@ -85,12 +82,9 @@ enum Suggestion: Equatable {
             if let c = AX.focusedContext() { forcedElement = c.element; fieldPauseUntil = nil; hideAll(); refresh(force: true) }
             return true
         }
-        if p.revealAlternatives?.matches(code, flags) == true, case .completion(let s)? = suggestion { requestAlternatives(for: s); return true }
-        if p.showSynonyms?.matches(code, flags) == true { requestSynonyms(immediate: true); return true }
         if p.fillForm?.matches(code, flags) == true { fillForm(); return true }
 
         let plain = flags.rawValue & Shortcut.mask
-        if list.isVisible, plain == 0, let n = digit(code), n >= 1, n <= listItems.count { pick(listItems[n - 1]); return true }
 
         if let s = suggestion {
             let rule = ctx.map { settings.rule(for: $0.bundleID, name: $0.appName) }
@@ -121,9 +115,6 @@ enum Suggestion: Equatable {
         schedule()
         return false
     }
-    private func digit(_ code: UInt16) -> Int? {
-        [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9][code]
-    }
     private func frontBundle() -> String? { NSWorkspace.shared.frontmostApplication?.bundleIdentifier }
 
     // MARK: scheduling
@@ -151,10 +142,7 @@ enum Suggestion: Equatable {
         if terminals.contains(c.bundleID), !settings.p.completeInTerminals, !forced, !looksLikeAgentPrompt(c.before) { return }
         if c.subrole == "AXSearchField", !forced { return }
 
-        if !c.selected.isEmpty {
-            if settings.p.synonyms, settings.p.synTrigger == .afterSelection { requestSynonyms(immediate: false) }
-            return
-        }
+        if !c.selected.isEmpty { return }
         let p = settings.p
         if p.formFill, FormFill.isEmptyField(c), let m = FormFill.match(c.element, profile: p.fillProfile) {
             Log.w("SHOW fill \(c.appName) \(m.label.debugDescription) -> \(m.sensitive ? Template.mask(m.value) : m.value.debugDescription)")
@@ -199,7 +187,6 @@ enum Suggestion: Equatable {
                 if text.isEmpty { return }
                 Log.w("SHOW completion \(Int(Date().timeIntervalSince(t0) * 1000))ms \(req.model.split(separator: "/").last ?? "") \(c.appName) [\(c.font.fontName) \(Int(c.fontSize))]: \(text.debugDescription)")
                 self.show(.completion(text))
-                if self.settings.p.wordAlternatives, self.settings.p.altTrigger == .pause { self.requestAlternatives(for: text) }
             } catch {
                 if g == self?.gen ?? -1 { Log.w("model error: \(error)") }
             }
@@ -239,15 +226,7 @@ enum Suggestion: Equatable {
         // context font, faded: the suggestion looks like what you're typing, just not yet committed
         ghost.show(s.display, font: c.font, color: c.textColor.withAlphaComponent(0.55), origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
     }
-    func hideAll() { suggestion = nil; listItems = []; ghost.hide(); list.hide(); gen += 1; task?.cancel() }
-    private func showList(_ items: [String]) {
-        listItems = Array(items.prefix(9))
-        guard !listItems.isEmpty, let c = ctx, let r = c.caretRect else { return }
-        let text = listItems.enumerated().map { "\($0.offset + 1) \($0.element)" }.joined(separator: "\n")
-        let h = CGFloat(listItems.count) * (c.fontSize * 1.5 + 2)
-        list.show(text, font: c.font, color: .black, origin: CGPoint(x: r.minX, y: r.minY - h - 4), lineHeight: h)
-    }
-
+    func hideAll() { suggestion = nil; ghost.hide(); gen += 1; task?.cancel() }
     // MARK: accept
     private func countWords(_ s: String) -> Int { s.split(whereSeparator: { $0 == " " }).count }
     private func typed(_ s: String) {
@@ -279,7 +258,6 @@ enum Suggestion: Equatable {
                 if settings.p.trailingSpaceAfterWord { out += " " }
                 hideAll(); typed(out); schedule()
             } else {
-                list.hide(); listItems = []
                 typed(out)
                 suggestion = .completion(remaining)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in self?.reposition() }
@@ -296,17 +274,6 @@ enum Suggestion: Equatable {
         ctx = c
         show(.completion(text))
     }
-    private func pick(_ item: String) {
-        if listIsSynonyms { hideAll(); typed(item); schedule(); return }
-        guard case .completion(let text)? = suggestion else { return }
-        let lead = text.prefix(while: { $0 == " " })
-        let rest = text.dropFirst(lead.count)
-        let word = rest.prefix(while: { $0 != " " })
-        suggestion = .completion(String(lead) + item + String(rest.dropFirst(word.count)))
-        list.hide(); listItems = []
-        acceptWord()
-    }
-
     // MARK: form fill
     func fillForm() {
         guard let w = FormFill.frontWindow() else { Log.w("FILL form: no front window"); return }
@@ -321,37 +288,5 @@ enum Suggestion: Equatable {
         gen += 1
         ghost.show(text, font: c.font, color: c.textColor.withAlphaComponent(0.6), origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in if self?.suggestion == nil { self?.ghost.hide() } }
-    }
-
-    // MARK: labs
-    private func requestAlternatives(for text: String) {
-        guard let c = ctx else { return }
-        let first = String(text.trimmingCharacters(in: .whitespaces).prefix(while: { $0 != " " }))
-        guard !first.isEmpty else { return }
-        let g = gen
-        let req = CompletionRequest(before: c.before, after: c.after, clipboard: nil, appName: c.appName, appInstructions: "", examples: [], length: .short, british: settings.p.britishEnglish)
-        Task { [weak self] in
-            guard let alts = try? await Engine.shared.alternatives(req, firstWord: first, custom: ""), let self, g == self.gen else { return }
-            self.listIsSynonyms = false
-            self.showList(alts)
-        }
-    }
-    private var synonymWork: DispatchWorkItem?
-    private func requestSynonyms(immediate: Bool) {
-        synonymWork?.cancel()
-        let w = DispatchWorkItem { [weak self] in
-            guard let self, let c = AX.focusedContext(), !c.selected.isEmpty, c.selected.count < 60 else { return }
-            self.ctx = c
-            let g = self.gen
-            Task { [weak self] in
-                guard let syn = try? await Engine.shared.synonyms(selection: c.selected, before: c.before, after: c.after, british: self?.settings.p.britishEnglish ?? false),
-                      let self, g == self.gen else { return }
-                self.listIsSynonyms = true
-                self.suggestion = nil
-                self.showList(syn)
-            }
-        }
-        synonymWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(immediate ? 0 : settings.p.synDelayMs), execute: w)
     }
 }

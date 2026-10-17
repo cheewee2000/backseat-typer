@@ -244,15 +244,6 @@ struct SettingsRoot: View {
     var labs: some View {
         Group {
             Text("Experimental features. They may change or go away.").font(.mono(12))
-            H("Word alternatives")
-            Toggle("Show a numbered list of other words the model considered; press the number to insert", isOn: $s.p.wordAlternatives).toggleStyle(CWTToggle())
-            Row("Show them") { Segments(value: $s.p.altTrigger, options: [(.pause, "after a short pause"), (.shortcut, "only on shortcut")]) }
-            ShortcutRecorder(title: "Reveal alternatives", shortcut: $s.p.revealAlternatives, c: c)
-            H("Synonyms for selected words")
-            Toggle("Select a word and get synonyms that fit the sentence; press the number to replace", isOn: $s.p.synonyms).toggleStyle(CWTToggle())
-            Row("Show them") { Segments(value: $s.p.synTrigger, options: [(.afterSelection, "after selecting"), (.shortcut, "only on shortcut")]) }
-            Row("Wait after selecting (ms)") { TextField("", value: $s.p.synDelayMs, format: .number).modifier(Field()).frame(width: 100) }
-            ShortcutRecorder(title: "Show synonyms now", shortcut: $s.p.showSynonyms, c: c)
             H("Language")
             Toggle("British English", isOn: $s.p.britishEnglish).toggleStyle(CWTToggle())
             Toggle("Right-to-left support (Arabic, Hebrew)", isOn: $s.p.rtl).toggleStyle(CWTToggle())

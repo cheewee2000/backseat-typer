@@ -26,8 +26,6 @@ struct Shortcut: Codable, Equatable {
 
 enum EscBehavior: String, Codable, CaseIterable { case pauseBriefly, offUntilAppSwitch, passThrough }
 enum CompletionLength: String, Codable, CaseIterable { case short, medium, long }
-enum AltTrigger: String, Codable, CaseIterable { case pause, shortcut }
-enum SynTrigger: String, Codable, CaseIterable { case afterSelection, shortcut, off }
 
 struct AppRule: Codable, Identifiable, Equatable {
     var id: String          // bundle id or domain
@@ -68,8 +66,6 @@ struct Prefs: Codable {
     var forceActivate: Shortcut? = Shortcut(keyCode: 50, modifiers: CGEventFlags.maskControl.rawValue, label: "⌃`")
     var toggleApp: Shortcut? = Shortcut(keyCode: 50, modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue | CGEventFlags.maskCommand.rawValue, label: "⌃⌥⌘`")
     var toggleGlobal: Shortcut? = nil
-    var revealAlternatives: Shortcut? = nil
-    var showSynonyms: Shortcut? = nil
     // personalization
     var recording = false
     var recordAll = false
@@ -77,11 +73,6 @@ struct Prefs: Codable {
     var customInstructions = Prefs.defaultInstructions()
     var apps: [AppRule] = []
     // labs
-    var wordAlternatives = false
-    var altTrigger = AltTrigger.pause
-    var synonyms = true
-    var synTrigger = SynTrigger.afterSelection
-    var synDelayMs = 600
     var britishEnglish = false
     var rtl = false
     // stats
