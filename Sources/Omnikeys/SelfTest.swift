@@ -32,6 +32,7 @@ enum SelfTest {
         check("glued word continuation keeps no space", Engine.clean(before: "covers the instal", raw: "lation.", maxWords: 8) == "lation.", Engine.clean(before: "covers the instal", raw: "lation.", maxWords: 8).debugDescription)
         check("window chrome copy dropped", Engine.clean(before: "so the\n", raw: "229 notes\nOctober 17", maxWords: 8, existing: "Notes | 229 notes | October 17, 2026 at 3:36 PM") == "")
         check("short overlap with chrome kept", Engine.clean(before: "I counted", raw: " 229 notes in", maxWords: 8, existing: "Notes | 229 notes | October 17") == " 229 notes in")
+        check("quote fragment continuation kept", Engine.clean(before: "when i type in something like \"this is showing similar issues\" the autocomplete is \"s", raw: "ometimes it is showing similar issues\"", maxWords: 8, glued: true) == "ometimes it is showing similar issues", Engine.clean(before: "when i type in something like \"this is showing similar issues\" the autocomplete is \"s", raw: "ometimes it is showing similar issues\"", maxWords: 8, glued: true).debugDescription)
         check("glued flag keeps no space", Engine.clean(before: "covers the instal", raw: "ment.", maxWords: 8, glued: true) == "ment.")
         check("healed trailing space dropped", Engine.healed("I went to the ") == ("I went to the", ""))
         check("healed newline kept", Engine.healed("- one\n") == ("- one\n", ""))
@@ -78,8 +79,31 @@ enum SelfTest {
                                     // grammar-sensitive joins: sentence end, mid-word, trailing space, after a comma, a list
                                     "Thanks for the update. ", "I went to the sto", "Can you send me the ", "If the budget allows,", "The budget covers the ash and the instal", "We will confirm the measurem", "see you tomo",
                                     "Shopping list:\n- eggs\n- milk\n- ", "The meeting is on Thursday at 3pm, so please",
-                                    "we should probably", "Hi Sam, hope you're well. I wanted to ask whether"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
-            var echoes = 0, empties = 0, total = 0
+                                    "we should probably", "Hi Sam, hope you're well. I wanted to ask whether",
+                                    // register spread: terse note, question, list item, formal, casual, numbers, names
+                                    "Reminder: the dentist appointment is at", "What time does the", "Pros:\n- cheap\n- fast\nCons:\n- ",
+                                    "Dear Ms. Alvarez,\n\nThank you for your letter of 12 March regarding", "lol yeah that was",
+                                    "The sensor reads 3.3 V at idle and", "Taylor said she would", "Please find attached the",
+                                    "I'm not sure if", "He didn't", "They've been working on the", "Our team of four", "After lunch we"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
+            var echoes = 0, empties = 0, total = 0, grammar = 0
+            // A grammar issue is a sentence NSSpellChecker flags in before+suggestion that was not flagged in before alone.
+            func grammarIssue(_ c: String, _ out: String) -> String? {
+                guard !out.isEmpty else { return nil }
+                func flags(_ t: String) -> [String] {
+                    var d: NSArray?; var r = NSSpellChecker.shared.checkGrammar(of: t, startingAt: 0, language: "en_US", wrap: false, inSpellDocumentWithTag: 0, details: &d)
+                    var out: [String] = []
+                    var guardN = 0
+                    while r.location != NSNotFound, guardN < 10 {
+                        guardN += 1
+                        out += (d as? [[String: Any]] ?? []).compactMap { $0[NSGrammarUserDescription] as? String }
+                        r = NSSpellChecker.shared.checkGrammar(of: t, startingAt: r.location + r.length, language: "en_US", wrap: false, inSpellDocumentWithTag: 0, details: &d)
+                    }
+                    return out
+                }
+                let base = flags(c), full = flags(c + out)
+                let new = full.filter { !base.contains($0) }
+                return new.isEmpty ? nil : new.joined(separator: "; ")
+            }
             Task {
                 for (i, c) in contexts.enumerated() {
                     let t0 = Date()
@@ -90,11 +114,12 @@ enum SelfTest {
                     if bench {
                         // An echo: three or more words of the suggestion already sit in the context.
                         let echo = Engine.isCopy([Engine.norm(out)], of: Engine.norm(c))
-                        echoes += echo ? 1 : 0; empties += out.isEmpty ? 1 : 0; total += ms
-                        print("BENCH \(ms)ms\(echo ? " ECHO" : "") \(c.suffix(60).debugDescription) -> \(out.debugDescription)")
+                        let g = grammarIssue(c, out)
+                        echoes += echo ? 1 : 0; empties += out.isEmpty ? 1 : 0; total += ms; grammar += g == nil ? 0 : 1
+                        print("BENCH \(ms)ms\(echo ? " ECHO" : "")\(g.map { " GRAMMAR[\($0)]" } ?? "") \(c.suffix(60).debugDescription) -> \(out.debugDescription)")
                     }
                 }
-                if bench { print("BENCH SUMMARY \(contexts.count) contexts, \(echoes) echoes, \(empties) empty, mean \(total / contexts.count)ms") }
+                if bench { print("BENCH SUMMARY \(contexts.count) contexts, \(echoes) echoes, \(empties) empty, \(grammar) grammar flags, mean \(total / contexts.count)ms") }
                 done = true
             }
             // Pump the main run loop instead of blocking it: the MLX loader runs on the main actor.
