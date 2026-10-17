@@ -101,6 +101,7 @@ struct CompletionRequest {
         let tokens: Int
         switch r.length { case .short: tokens = 12; case .medium: tokens = 24; case .long: tokens = 48 }
         var out: String
+        var glued = false
         if r.model == Models.apple {
             ins += "\n\nExample:\nText: I went to the\nContinuation: store to pick up milk"
             let session = LanguageModelSession(model: model, instructions: ins)
@@ -113,37 +114,52 @@ struct CompletionRequest {
             let window = String(r.before.suffix(2000))
             var (prefill, partial) = Engine.healed(window)
             let container = try await mlx(r.model)
-            func gen(_ prefill: String) async throws -> String {
-                try await container.perform { (ctx: ModelContext) -> String in
+            // `partial` is the fragment the model must type again; with a space in front when one was dropped before it.
+            func gen(_ prefill: String, _ partial: String) async throws -> String {
+                let target = partial.isEmpty ? "" : (window.dropLast(partial.count).last == " " ? " " : "") + partial
+                return try await container.perform { (ctx: ModelContext) -> String in
                     var ids = try ctx.tokenizer.applyChatTemplate(messages: [["role": "user", "content": ins]], tools: nil, additionalContext: ["enable_thinking": false])
                     ids += ctx.tokenizer.encode(text: prefill, addSpecialTokens: false)
                     let input = LMInput(tokens: MLXArray(ids))
                     // An instruct model likes to end its turn after a finished sentence; a suggestion is wanted anyway.
                     let stops = Array(ctx.configuration.eosTokenIds) + ([ctx.tokenizer.eosTokenId, ctx.tokenizer.unknownTokenId] + ctx.configuration.extraEOSTokens.map { ctx.tokenizer.convertTokenToId($0) }).compactMap { $0 }
-                    let it = try TokenIterator(input: input, model: ctx.model, processor: NoEarlyStop(stop: stops, left: 3), sampler: ArgMaxSampler(), maxTokens: tokens)
+                    let steer = Steer(stop: stops, left: 3, target: target, vocab: Engine.vocab(r.model, ctx.tokenizer), tokenizer: ctx.tokenizer)
+                    let it = try TokenIterator(input: input, model: ctx.model, processor: steer, sampler: ArgMaxSampler(), maxTokens: tokens)
                     return MLXLMCommon.generate(input: input, context: ctx, iterator: it) { (_: [Int]) in .more }.output
                 }
             }
-            out = try await gen(prefill)
+            out = try await gen(prefill, partial)
             // Letters glued straight onto a finished word mean the model was continuing it across a bad token split
             // ("instal" + "ation"). Let it type the whole word from the boundary instead.
             if partial.isEmpty, window.last?.isLetter == true, out.first?.isLetter == true {
                 (prefill, partial) = Engine.healed(window, retype: true)
-                out = try await gen(prefill)
+                out = try await gen(prefill, partial)
             }
             Log.w("RAW \(String(r.before.suffix(160)).debugDescription) -> \(out.debugDescription)\(partial.isEmpty ? "" : " (healing \(partial))")")
             // Token healing: the model re-typed the fragment from the word boundary; it must agree with what was typed.
             if !partial.isEmpty {
                 let t = out.drop(while: { $0 == " " })
                 out = t.lowercased().hasPrefix(partial.lowercased()) ? String(t.dropFirst(partial.count)) : ""
+                glued = out.first?.isLetter == true
             }
         }
         if r.model == Models.apple { Log.w("RAW \(String(r.before.suffix(160)).debugDescription) -> \(out.debugDescription)") }
         let existing = ([r.after, r.clipboard ?? ""] + r.examples + [r.screen]).joined(separator: "\n")
-        return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20), existing: existing)
+        return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20), existing: existing, glued: glued)
     }
 
     // MARK: MLX models
+    nonisolated(unsafe) private static var vocabs: [String: [(String, Int32)]] = [:]
+    /// Token texts sorted for prefix lookup, built once per model (~0.3 s for Gemma's 262k tokens).
+    static func vocab(_ model: String, _ t: MLXLMCommon.Tokenizer) -> [(String, Int32)] {
+        if let v = vocabs[model] { return v }
+        var v: [(String, Int32)] = []
+        var id = 0
+        while let tok = t.convertIdToToken(id) { if !tok.hasPrefix("<") { v.append((tok.replacingOccurrences(of: "▁", with: " "), Int32(id))) }; id += 1 }
+        v.sort { $0.0 < $1.0 }
+        vocabs[model] = v
+        return v
+    }
     private(set) var mlxState: [String: String] = [:]
     private var mlxLoads: [String: Task<ModelContainer, Error>] = [:]
     /// One model resident at a time; the others are dropped when a new one loads.
@@ -190,7 +206,8 @@ struct CompletionRequest {
         }
     }
     /// `existing` is other text the model could have copied (after the cursor, on screen).
-    static func clean(before: String, raw: String, maxWords: Int, existing: String = "") -> String {
+    /// `glued`: the output is known to continue the last word (healed fragment), so no space is inserted.
+    static func clean(before: String, raw: String, maxWords: Int, existing: String = "", glued: Bool = false) -> String {
         var s = raw.replacingOccurrences(of: "\r", with: "")
         if let nl = s.firstIndex(of: "\n") { s = String(s[..<nl]) }   // single line
         s = s.trimmingCharacters(in: CharacterSet(charactersIn: "\"“”`"))
@@ -222,7 +239,7 @@ struct CompletionRequest {
         if let lc = lastChar, lc.isLetter || lc.isNumber, firstChar.isLetter {
             let lastWord = String(before.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).last ?? "")
             let firstWord = String(s.prefix(while: { $0.isLetter || $0 == "'" }))
-            if Spell.isWord(lastWord), !Spell.isWord(lastWord + firstWord) { s = " " + s }
+            if !glued, Spell.isWord(lastWord), !Spell.isWord(lastWord + firstWord) { s = " " + s }
         } else if let lc = lastChar, lc == " " || lc == "\n", firstChar == " " {
             s = String(s.drop(while: { $0 == " " }))
         } else if lastChar == nil, firstChar == " " {
@@ -239,19 +256,51 @@ struct CompletionRequest {
     }
 }
 
-/// Masks the end-of-turn tokens for the first `left` generated tokens.
-struct NoEarlyStop: LogitProcessor {
+/// Logit processor for the prefill path. Masks the end-of-turn tokens for the first `left` tokens, and while the
+/// output is shorter than `target` (the word fragment being healed) allows only tokens that keep it a prefix of the
+/// target or complete it: "measurem" then comes back as "measurements", not whichever word the model preferred.
+struct Steer: LogitProcessor {
     let stop: MLXArray
     var left: Int
-    init(stop: [Int], left: Int) { self.stop = MLXArray(stop.map { Int32($0) }); self.left = left }
+    let target: String
+    init(stop: [Int], left: Int, target: String, vocab: [(String, Int32)], tokenizer: MLXLMCommon.Tokenizer) {
+        self.stop = MLXArray(stop.map { Int32($0) }); self.left = left; self.target = target; self.vocab = vocab; self.tokenizer = tokenizer
+    }
+    let vocab: [(String, Int32)]   // token text (space for ▁), sorted by text
+    let tokenizer: MLXLMCommon.Tokenizer
+    var ids: [Int] = []
+    var done = ""
     mutating func prompt(_ prompt: MLXArray) {}
     func process(logits: MLXArray) -> MLXArray {
+        if done.count < target.count {
+            let rem = String(target.dropFirst(done.count))
+            var allowed: [Int32] = []
+            // tokens that are a prefix of the remainder
+            for n in 1...rem.count { let p = String(rem.prefix(n)); var i = Steer.lower(vocab, p); while i < vocab.count, vocab[i].0 == p { allowed.append(vocab[i].1); i += 1 } }
+            // tokens that start with the remainder
+            var i = Steer.lower(vocab, rem); while i < vocab.count, vocab[i].0.hasPrefix(rem) { allowed.append(vocab[i].1); i += 1 }
+            if !allowed.isEmpty {
+                let idx = MLXArray(allowed)
+                let m = MLXArray.full(logits.shape, values: MLXArray(-Float.infinity), type: Float.self)
+                m[.ellipsis, idx] = logits[.ellipsis, idx]
+                return m
+            }
+        }
         guard left > 0 else { return logits }
         let l = logits
         l[.ellipsis, stop] = MLXArray(-Float.infinity)
         return l
     }
-    mutating func didSample(token: MLXArray) { left -= 1 }
+    mutating func didSample(token: MLXArray) {
+        left -= 1
+        ids.append(token.item(Int.self))
+        if done.count < target.count { done = tokenizer.decode(tokenIds: ids) }
+    }
+    static func lower(_ v: [(String, Int32)], _ key: String) -> Int {
+        var lo = 0, hi = v.count
+        while lo < hi { let mid = (lo + hi) / 2; if v[mid].0 < key { lo = mid + 1 } else { hi = mid } }
+        return lo
+    }
 }
 
 enum Spell {
