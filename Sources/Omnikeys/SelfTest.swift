@@ -19,6 +19,11 @@ enum SelfTest {
         check("short repeat allowed", Engine.clean(before: "I said yes and", raw: " yes", maxWords: 8) == " yes")
         check("label echo dropped", Engine.clean(before: "I had a look at the sketches.", raw: "continuation", maxWords: 8) == "")
         check("single line", Engine.clean(before: "Hi", raw: " there\nmore", maxWords: 8) == " there")
+        // terminal: the typed line is above the agent's status bar
+        let tui = "─────\n> show a ti        \n─────\n  ⏵⏵ auto mode on · ← 1 agent"
+        check("terminal input line", Controller.agentInput(tui) == "─────\n> show a ti", Controller.agentInput(tui).debugDescription)
+        check("terminal wrapped input", Controller.agentInput("> one two\n  three   \n\nstatus") == "> one two\n  three")
+        check("terminal no prompt", Controller.agentInput("ls -la\nfoo") == nil)
         // learned-field fuzzy matching
         var vd = VaultData()
         let k = vd.addCustomField(label: "Tell us about yourself", kind: .list, sensitive: false); vd.setValue("P1", k, "Maker.")

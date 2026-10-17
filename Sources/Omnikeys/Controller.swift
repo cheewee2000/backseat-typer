@@ -129,7 +129,7 @@ enum Suggestion: Equatable {
         gen += 1
         task?.cancel()
         guard settings.p.enabled, !pausedGlobally, Engine.shared.available else { return }
-        guard let c = AX.focusedContext() else { ctx = nil; return }
+        guard var c = AX.focusedContext() else { ctx = nil; return }
         ctx = c
         trackRecording(c)
         guard !c.isSecure else { return }
@@ -140,6 +140,7 @@ enum Suggestion: Equatable {
         if let u = fieldPauseUntil, u > Date(), !forced { return }
         if codeEditors.contains(c.bundleID), !settings.p.completeInCodeEditors, !forced { return }
         if terminals.contains(c.bundleID), !settings.p.completeInTerminals, !forced, !looksLikeAgentPrompt(c.before) { return }
+        if terminals.contains(c.bundleID), let input = Controller.agentInput(c.before) { c.before = input; c.after = "" }
         if c.subrole == "AXSearchField", !forced { return }
 
         if !c.selected.isEmpty { return }
@@ -192,10 +193,19 @@ enum Suggestion: Equatable {
             }
         }
     }
-    private func looksLikeAgentPrompt(_ before: String) -> Bool {
-        let line = before.split(separator: "\n", omittingEmptySubsequences: false).last.map(String.init) ?? ""
-        let t = line.trimmingCharacters(in: CharacterSet(charactersIn: " │┃|"))
-        return t.hasPrefix(">") || t.hasPrefix("›") || t.hasPrefix("❯")
+    private func looksLikeAgentPrompt(_ before: String) -> Bool { Controller.agentInput(before) != nil }
+    /// A terminal's AX caret sits at the end of the screen buffer, below an agent TUI's status bar, so `before` ends in
+    /// chrome while the words being typed sit on the `>` prompt line above. Returns the text up to the end of that
+    /// input (the prompt line plus wrapped lines starting with a letter or digit), or nil when there is none.
+    /// ponytail: a trailing space the user really typed is lost with the padding; the joiner then adds one.
+    nonisolated static func agentInput(_ before: String) -> String? {
+        let lines = before.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let chrome = CharacterSet(charactersIn: " │┃|\t")
+        guard let i = lines.lastIndex(where: { l in
+            let t = l.trimmingCharacters(in: chrome); return t.hasPrefix(">") || t.hasPrefix("›") || t.hasPrefix("❯") }) else { return nil }
+        var end = i
+        while end + 1 < lines.count, let f = lines[end + 1].trimmingCharacters(in: chrome).first, f.isLetter || f.isNumber { end += 1 }
+        return String(lines[...end].joined(separator: "\n").reversed().drop(while: { " │┃|\t".contains($0) }).reversed())
     }
 
     // MARK: recording
@@ -213,7 +223,7 @@ enum Suggestion: Equatable {
         let p = settings.p
         guard p.recording, !lastApp.isEmpty, !lastText.isEmpty else { lastText = ""; return }
         let rule = settings.p.apps.first(where: { $0.id == lastApp })
-        if rule?.recording != false, sessionAccepted || p.recordAll { History.shared.record(app: lastApp, text: lastText) }
+        if rule?.recording != false, !terminals.contains(lastApp), sessionAccepted || p.recordAll { History.shared.record(app: lastApp, text: lastText) }
         lastText = ""
     }
 

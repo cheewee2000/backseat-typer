@@ -75,8 +75,8 @@ struct CompletionRequest {
         if !custom.isEmpty { s += "\n\nAbout the writer: \(custom)" }
         if !r.appInstructions.isEmpty { s += "\n\nWhen writing in \(r.appName): \(r.appInstructions)" }
         // A sample taken from this very document makes the model echo it instead of continuing.
-        let head = String(r.before.prefix(40))
-        let ex = r.examples.filter { head.count < 20 || !$0.contains(head) }
+        let doc = Engine.norm(r.before)
+        let ex = r.examples.filter { let h = Engine.norm(String($0.prefix(80))); return h.count < 20 || !doc.contains(h) }
         if !ex.isEmpty {
             s += "\n\nSamples of how this writer writes. Favor their vocabulary and phrasing:\n" + ex.map { "- \($0)" }.joined(separator: "\n")
         }
@@ -108,7 +108,9 @@ struct CompletionRequest {
                                       additionalContext: ["enable_thinking": false])
             out = try await session.respond(to: prompt)
         }
-        return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20), existing: r.after + "\n" + r.screen)
+        Log.w("RAW \(String(r.before.suffix(80)).debugDescription) -> \(out.debugDescription)")
+        let existing = ([r.after, r.clipboard ?? ""] + r.examples + [r.screen]).joined(separator: "\n")
+        return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20), existing: existing)
     }
 
     // MARK: MLX models
