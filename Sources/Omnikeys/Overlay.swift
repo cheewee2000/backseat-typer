@@ -36,7 +36,12 @@ final class OverlayPanel {
     func show(_ text: String, font: NSFont, color: NSColor, origin: CGPoint, lineHeight: CGFloat? = nil, rtl: Bool = false) {
         label.font = font
         label.textColor = color
-        label.stringValue = text
+        // A halo of the opposite luminance keeps the ghost legible when the background guess is wrong
+        // (dark terminals, dark web pages, empty fields with no text colour of their own).
+        let rgb = color.usingColorSpace(.sRGB) ?? color
+        let lum = 0.299 * rgb.redComponent + 0.587 * rgb.greenComponent + 0.114 * rgb.blueComponent
+        let halo = NSShadow(); halo.shadowColor = (lum > 0.5 ? NSColor.black : NSColor.white).withAlphaComponent(0.85); halo.shadowBlurRadius = 2; halo.shadowOffset = .zero
+        label.attributedStringValue = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color, .shadow: halo])
         label.baseWritingDirection = rtl ? .rightToLeft : .natural
         label.alignment = rtl ? .right : .left
         label.sizeToFit()

@@ -236,7 +236,7 @@ enum Suggestion: Equatable {
         guard let c = ctx, let r = c.caretRect else { Log.w("GHOST no caret rect for \(ctx?.role ?? "?") in \(ctx?.appName ?? "?")"); return }
         if case .fill = s { Log.w("GHOST fill at \(Int(r.minX)),\(Int(r.minY)) h=\(Int(r.height))") }
         // context font, faded: the suggestion looks like what you're typing, just not yet committed
-        ghost.show(s.display, font: c.font, color: c.textColor.withAlphaComponent(0.4), origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
+        ghost.show(s.display, font: c.font, color: c.textColor.withAlphaComponent(0.55), origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
     }
     func hideAll() { suggestion = nil; listItems = []; ghost.hide(); list.hide(); gen += 1; task?.cancel() }
     private func showList(_ items: [String]) {

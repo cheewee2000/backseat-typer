@@ -95,21 +95,32 @@ enum AX {
             }
         }
         var font: NSFont? = nil
-        var color: NSColor = .black   // not .textColor: in dark mode that resolves to white, invisible on a white form field
-        if caret > 0, let a = param(element, kAXAttributedStringForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret - 1, length: 1))) as? NSAttributedString, a.length > 0 {
+        var color: NSColor? = nil
+        func read(_ el: AXUIElement, _ r: CFRange) {
+            guard let a = param(el, kAXAttributedStringForRangeParameterizedAttribute as String, rangeValue(r)) as? NSAttributedString, a.length > 0 else { return }
             let attrs = a.attributes(at: 0, effectiveRange: nil)
-            if let f = attrs[NSAttributedString.Key("AXFont")] as? [String: Any] {
+            if font == nil, let f = attrs[NSAttributedString.Key("AXFont")] as? [String: Any] {
                 let sz = f["AXFontSize"] as? CGFloat ?? 13
                 font = (f["AXFontName"] as? String).flatMap { NSFont(name: $0, size: sz) }
                     ?? (f["AXFontFamily"] as? String).flatMap { NSFont(name: $0, size: sz) } ?? NSFont.systemFont(ofSize: sz)
-            } else if let f = attrs[.font] as? NSFont { font = f }
+            } else if font == nil, let f = attrs[.font] as? NSFont { font = f }
             if let cg = attrs[NSAttributedString.Key("AXForegroundColor")], CFGetTypeID(cg as CFTypeRef) == CGColor.typeID,
                let c = NSColor(cgColor: cg as! CGColor) { color = c }
             else if let c = attrs[.foregroundColor] as? NSColor { color = c }
         }
+        // The text colour: the character before the caret, else the first character, else the field's own label
+        // (an empty field has no text of its own), else the system theme. Overlay adds a contrasting halo anyway.
+        if caret > 0 { read(element, CFRange(location: caret - 1, length: 1)) }
+        if color == nil, total > 0 { read(element, CFRange(location: 0, length: 1)) }
+        if color == nil, let t = attr(element, kAXTitleUIElementAttribute as String) { read(t as! AXUIElement, CFRange(location: 0, length: 1)) }
+        if color == nil, let parent = attr(element, kAXParentAttribute as String), let kids = attr(parent as! AXUIElement, kAXChildrenAttribute as String) as? [AXUIElement],
+           let i = kids.firstIndex(where: { CFEqual($0, element) }) {
+            for k in kids[..<i].reversed().prefix(3) where (attr(k, kAXRoleAttribute as String) as? String) == "AXStaticText" { read(k, CFRange(location: 0, length: 1)); if color != nil { break } }
+        }
+        let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let fallbackSize = max(11, min(28, (rect?.height ?? 18) * 0.72))
         return FocusContext(element: element, pid: pid, bundleID: app?.bundleIdentifier ?? "pid.\(pid)", appName: app?.localizedName ?? "App",
                             role: role, subrole: subrole, before: before ?? "", after: after ?? "", selected: selected,
-                            caret: caret, caretRect: rect, font: font ?? NSFont.systemFont(ofSize: fallbackSize), textColor: color)
+                            caret: caret, caretRect: rect, font: font ?? NSFont.systemFont(ofSize: fallbackSize), textColor: color ?? (dark ? .white : .black))
     }
 }
