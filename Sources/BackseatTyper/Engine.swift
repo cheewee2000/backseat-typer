@@ -105,8 +105,6 @@ struct CompletionRequest {
         // the JSON wrapper of @Generable ate most of a 20-token budget and left one-word suggestions.
         var ins = instructions(r, custom: custom)
         if let c = r.clipboard, !c.isEmpty { ins += "\n\nThe writer's clipboard, which may be relevant:\n\(c.prefix(300))" }
-        let afterLine = r.after.prefix(while: { $0 != "\n" })
-        if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty { ins += "\n\nThe text after the cursor is: \(afterLine.prefix(200))\nYour words must fit before it." }
         if !r.screen.isEmpty {
             ins += "\n\nOther text visible on screen right now (the rest of this window, then windows beside it). Use the names, numbers and facts in it when the sentence calls for them, but do not copy sentences from it:\n\(r.screen.prefix(3200))"
         }

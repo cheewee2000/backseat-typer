@@ -167,7 +167,7 @@ enum Suggestion: Equatable {
         // Google Docs with screen-reader support off exposes only two zero-width characters: nothing to continue.
         guard c.before.count >= p.minContextChars || forced else { skip((c.before + c.after).allSatisfy({ $0 == "\u{200B}" }) && !c.before.isEmpty ? "Google Docs accessibility mode off (Tools › Accessibility, ⌘⌥Z)" : "short context"); return }
         let afterLine = c.after.prefix(while: { $0 != "\n" })
-        if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty, !p.midLine { skip("mid-line"); return }
+        if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty { skip("mid-line"); return }   // ghost text would land on top of the existing text
         lastSkip = ""
 
         var req = CompletionRequest(

@@ -138,7 +138,6 @@ struct SettingsRoot: View {
             Row("Completion length") { Segments(value: $s.p.completionLength, options: [(.short, "short"), (.medium, "medium"), (.long, "long")]) }
             Row("Suggest after a pause of (ms)") { TextField("", value: $s.p.debounceMs, format: .number).modifier(Field()).frame(width: 100) }
             Row("Minimum context (characters)") { TextField("", value: $s.p.minContextChars, format: .number).modifier(Field()).frame(width: 100) }
-            Toggle("Mid-line completion (suggest with text after the cursor)", isOn: $s.p.midLine).toggleStyle(CWTToggle())
             Toggle("Form fill (an empty field whose label matches your vault shows the answer; Tab fills it)", isOn: $s.p.formFill).toggleStyle(CWTToggle())
             Toggle("Learn from forms (what you type into a labelled field is remembered for the next form with that label)", isOn: $s.p.learnForms).toggleStyle(CWTToggle())
             Toggle("Include sensitive fields (ID numbers, medical lists) when filling a whole form", isOn: $s.p.fillSensitive).toggleStyle(CWTToggle())

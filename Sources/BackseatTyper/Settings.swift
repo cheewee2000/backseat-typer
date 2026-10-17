@@ -45,7 +45,6 @@ struct Prefs: Codable {
     var trailingSpaceAfterWord = false
     var tabEnabled = true
     var escBehavior = EscBehavior.pauseBriefly
-    var midLine = true
     var screenContext = true     // read the rest of the window and the windows beside it
     var clipboardAwareness = false   // off: measured to derail the 3B model
     var fullAutocorrect = true
