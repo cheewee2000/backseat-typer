@@ -78,6 +78,7 @@ enum AX {
             let aStart = min(total, caret + sel.length)
             after = v.substring(with: NSRange(location: aStart, length: min(afterMax, total - aStart)))
         }
+        // Terminal emulators (Knife Terminal) report never-written cells as NUL; those are spaces to the model and the copy filter.
         let selected = sel.length > 0 ? (string(element, sel) ?? "") : ""
         // Caret position: right edge of the previous character, else the element's frame.
         var rect: CGRect?
@@ -138,7 +139,7 @@ enum AX {
         let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let fallbackSize = max(11, min(28, (rect?.height ?? 18) * 0.72))
         return FocusContext(element: element, pid: pid, bundleID: app?.bundleIdentifier ?? "pid.\(pid)", appName: app?.localizedName ?? "App",
-                            role: role, subrole: subrole, before: before ?? "", after: after ?? "", selected: selected,
+                            role: role, subrole: subrole, before: (before ?? "").replacingOccurrences(of: "\0", with: " "), after: (after ?? "").replacingOccurrences(of: "\0", with: " "), selected: selected,
                             caret: caret, caretRect: rect, font: font ?? NSFont.systemFont(ofSize: fallbackSize), textColor: color ?? (dark ? .white : .black))
     }
 }

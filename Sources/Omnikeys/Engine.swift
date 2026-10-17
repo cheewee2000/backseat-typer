@@ -134,7 +134,7 @@ struct CompletionRequest {
 
     /// Normalizes raw model output into a ghost-text continuation.
     static func norm(_ s: String) -> String {
-        s.lowercased().replacingOccurrences(of: #"[\s\p{P}]+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        s.lowercased().replacingOccurrences(of: #"[\s\p{P}\p{C}]+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
     }
     /// `existing` is other text the model could have copied (after the cursor, on screen).
     static func clean(before: String, raw: String, maxWords: Int, existing: String = "") -> String {

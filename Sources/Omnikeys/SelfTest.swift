@@ -23,6 +23,7 @@ enum SelfTest {
         let tui = "─────\n> show a ti        \n─────\n  ⏵⏵ auto mode on · ← 1 agent"
         check("terminal input line", Controller.agentInput(tui) == "─────\n> show a ti", Controller.agentInput(tui).debugDescription)
         check("terminal wrapped input", Controller.agentInput("> one two\n  three   \n\nstatus") == "> one two\n  three")
+        check("NUL-padded terminal repeat", Engine.clean(before: "the autocomplete is \"showing similar issues\"", raw: "showing similar issues", maxWords: 8, existing: "x\0showing\0similar\0issues") == "")
         check("terminal no prompt", Controller.agentInput("ls -la\nfoo") == nil)
         // learned-field fuzzy matching
         var vd = VaultData()
