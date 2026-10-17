@@ -19,4 +19,6 @@
   <key>NSHighResolutionCapable</key><true/>
   <key>ATSApplicationFontsPath</key><string>Fonts</string>
   <key>NSHumanReadableCopyright</key><string>CW&amp;T</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Omnikeys fills the vault from your own contact card, on this Mac only.</string>
 </dict></plist>

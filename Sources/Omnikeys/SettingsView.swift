@@ -319,6 +319,9 @@ struct VaultView: View {
             }
             H("Backup")
             HStack(spacing: 8) {
+                Button("fill from my contacts card") {
+                    Task { do { let k = try await v.importMeCard(into: s.p.fillProfile); status = k.isEmpty ? "Nothing new on your card." : "Filled \(k.count) field(s) from Contacts." } catch { status = error.localizedDescription } }
+                }.buttonStyle(CWTButton())
                 Button("import form filler backup…") { importBackup() }.buttonStyle(CWTButton())
                 Button("export backup…") { exportBackup() }.buttonStyle(CWTButton())
                 Button("erase vault") { v.erase(); status = "Vault erased." }.buttonStyle(CWTButton())

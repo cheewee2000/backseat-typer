@@ -7,7 +7,7 @@ Predictive text for every Mac text field, on-device. A Cotypist-style clone with
 - Typo fix with Tab, emoji by `:shortcode`, mid-line completion, clipboard awareness (off by default: it measurably derails the small models).
 - Model picker in Settings: Apple, Gemma 4 E2B (Cotypist's default), Gemma 4 E4B, Qwen2.5 1.5B, Qwen3 1.7B. Weights cache in `~/.cache/huggingface/hub` (1 to 3 GB each).
 - Global and per-app custom instructions, personalization from your own typing history (6-stop slider), delete all data.
-- Form fill, ported from Form Filler: an encrypted vault of your details (names, contact, address, IDs, work, emergency, medical, insurance, custom fields, several people). An empty field whose label matches shows the answer as ghost text, Tab fills it. ⌃⌥F fills every empty field in the front window. Sensitive fields are masked and skipped by whole-form fill unless enabled. Imports the iPhone and web Form Filler encrypted backups unchanged.
+- Form fill, ported from Form Filler: an encrypted vault of your details (names, contact, address, IDs, work, emergency, medical, insurance, custom fields, several people). An empty field whose label matches shows the answer as ghost text, Tab fills it. ⌃⌥F fills every empty field in the front window. Sensitive fields are masked and skipped by whole-form fill unless enabled. Imports the iPhone and web Form Filler encrypted backups unchanged, and fills itself from your macOS Contacts card.
 - Labs: numbered word alternatives, synonyms for a selected word, British English, right-to-left.
 
 ## Build

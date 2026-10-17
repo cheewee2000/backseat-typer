@@ -28,6 +28,7 @@ let package = Package(
                 .linkedFramework("FoundationModels"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("ServiceManagement"),
+                .linkedFramework("Contacts"),
             ]
         )
     ]
