@@ -56,7 +56,10 @@ enum AX {
         let app = NSRunningApplication(processIdentifier: pid)
         let role = attr(element, kAXRoleAttribute as String) as? String ?? ""
         let subrole = attr(element, kAXSubroleAttribute as String) as? String ?? ""
-        guard let sel = cfRange(attr(element, kAXSelectedTextRangeAttribute as String)) else { return nil }
+        guard let sel = cfRange(attr(element, kAXSelectedTextRangeAttribute as String)) else {
+            Log.w("AX: no selected text range on \(role)/\(subrole) in \(app?.localizedName ?? "?") value=\(attr(element, kAXValueAttribute as String) == nil ? "none" : "yes")")
+            return nil
+        }
         let caret = sel.location
         var total = attr(element, kAXNumberOfCharactersAttribute as String) as? Int ?? -1
         var before: String?, after: String?

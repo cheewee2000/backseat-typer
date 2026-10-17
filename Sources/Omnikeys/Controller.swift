@@ -48,7 +48,7 @@ enum Suggestion: Equatable {
     var recorder: ((Shortcut) -> Void)?
 
     private let codeEditors: Set<String> = ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "com.microsoft.VSCodeInsiders"]
-    private let terminals: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2"]
+    private let terminals: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2", "com.cwandt.knifeterminal"]
 
     func start() {
         tap.onKey = { [weak self] e, c, f in self?.handleKey(e, c, f) ?? false }
