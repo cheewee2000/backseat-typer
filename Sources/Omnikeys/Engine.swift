@@ -110,15 +110,26 @@ struct CompletionRequest {
             // continuation of it rather than an answer about it. The screen dump used to win that contest and the same
             // suggestion came back whatever was typed.
             ins += "\n\nYour reply starts with the writer's text so far, exactly as they wrote it. Keep writing from where it stops."
-            let (prefill, partial) = Engine.healed(String(r.before.suffix(2000)))
-            out = try await mlx(r.model).perform { (ctx: ModelContext) -> String in
-                var ids = try ctx.tokenizer.applyChatTemplate(messages: [["role": "user", "content": ins]], tools: nil, additionalContext: ["enable_thinking": false])
-                ids += ctx.tokenizer.encode(text: prefill, addSpecialTokens: false)
-                let input = LMInput(tokens: MLXArray(ids))
-                // An instruct model likes to end its turn after a finished sentence; a suggestion is wanted anyway.
-                let stops = Array(ctx.configuration.eosTokenIds) + ([ctx.tokenizer.eosTokenId, ctx.tokenizer.unknownTokenId] + ctx.configuration.extraEOSTokens.map { ctx.tokenizer.convertTokenToId($0) }).compactMap { $0 }
-                let it = try TokenIterator(input: input, model: ctx.model, processor: NoEarlyStop(stop: stops, left: 3), sampler: ArgMaxSampler(), maxTokens: tokens)
-                return MLXLMCommon.generate(input: input, context: ctx, iterator: it) { (_: [Int]) in .more }.output
+            let window = String(r.before.suffix(2000))
+            var (prefill, partial) = Engine.healed(window)
+            let container = try await mlx(r.model)
+            func gen(_ prefill: String) async throws -> String {
+                try await container.perform { (ctx: ModelContext) -> String in
+                    var ids = try ctx.tokenizer.applyChatTemplate(messages: [["role": "user", "content": ins]], tools: nil, additionalContext: ["enable_thinking": false])
+                    ids += ctx.tokenizer.encode(text: prefill, addSpecialTokens: false)
+                    let input = LMInput(tokens: MLXArray(ids))
+                    // An instruct model likes to end its turn after a finished sentence; a suggestion is wanted anyway.
+                    let stops = Array(ctx.configuration.eosTokenIds) + ([ctx.tokenizer.eosTokenId, ctx.tokenizer.unknownTokenId] + ctx.configuration.extraEOSTokens.map { ctx.tokenizer.convertTokenToId($0) }).compactMap { $0 }
+                    let it = try TokenIterator(input: input, model: ctx.model, processor: NoEarlyStop(stop: stops, left: 3), sampler: ArgMaxSampler(), maxTokens: tokens)
+                    return MLXLMCommon.generate(input: input, context: ctx, iterator: it) { (_: [Int]) in .more }.output
+                }
+            }
+            out = try await gen(prefill)
+            // Letters glued straight onto a finished word mean the model was continuing it across a bad token split
+            // ("instal" + "ation"). Let it type the whole word from the boundary instead.
+            if partial.isEmpty, window.last?.isLetter == true, out.first?.isLetter == true {
+                (prefill, partial) = Engine.healed(window, retype: true)
+                out = try await gen(prefill)
             }
             Log.w("RAW \(String(r.before.suffix(160)).debugDescription) -> \(out.debugDescription)\(partial.isEmpty ? "" : " (healing \(partial))")")
             // Token healing: the model re-typed the fragment from the word boundary; it must agree with what was typed.
@@ -153,13 +164,15 @@ struct CompletionRequest {
 
     /// Token healing for the prefill. A trailing fragment that is not a word ("sto") would tokenize unlike the word it
     /// starts, so it is left off the prefill and the model types it again; trailing spaces likewise, since a word
-    /// token carries its own leading space. Returns the text to prefill and the fragment the output must start with.
-    static func healed(_ before: String) -> (prefill: String, partial: String) {
+    /// token carries its own leading space. `retype` leaves the last word off even when it is a word: used when the
+    /// model glued letters onto it ("instal" + "ation"), which means it was continuing the word from a bad token split.
+    /// Returns the text to prefill and the fragment the output must start with.
+    static func healed(_ before: String, retype: Bool = false) -> (prefill: String, partial: String) {
         var p = before
         var partial = ""
         if let l = p.last, l.isLetter || l.isNumber {
             let w = String(p.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).last ?? "")
-            if !Spell.isWord(w) { partial = w; p = String(p.dropLast(w.count)) }
+            if retype || !Spell.isWord(w) { partial = w; p = String(p.dropLast(w.count)) }
         }
         p = String(p.reversed().drop(while: { $0 == " " }).reversed())
         return (p, partial)
@@ -208,7 +221,8 @@ struct CompletionRequest {
         let firstChar = s.first!
         if let lc = lastChar, lc.isLetter || lc.isNumber, firstChar.isLetter {
             let lastWord = String(before.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).last ?? "")
-            if Spell.isWord(lastWord) { s = " " + s }
+            let firstWord = String(s.prefix(while: { $0.isLetter || $0 == "'" }))
+            if Spell.isWord(lastWord), !Spell.isWord(lastWord + firstWord) { s = " " + s }
         } else if let lc = lastChar, lc == " " || lc == "\n", firstChar == " " {
             s = String(s.drop(while: { $0 == " " }))
         } else if lastChar == nil, firstChar == " " {

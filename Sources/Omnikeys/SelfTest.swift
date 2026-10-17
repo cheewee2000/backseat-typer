@@ -28,6 +28,8 @@ enum SelfTest {
         // prefill token healing
         check("healed fragment", Engine.healed("I went to the sto") == ("I went to the", "sto"), "\(Engine.healed("I went to the sto"))")
         check("healed whole word kept", Engine.healed("I went to the") == ("I went to the", ""))
+        check("healed retype", Engine.healed("the instal", retype: true) == ("the", "instal"))
+        check("glued word continuation keeps no space", Engine.clean(before: "covers the instal", raw: "lation.", maxWords: 8) == "lation.", Engine.clean(before: "covers the instal", raw: "lation.", maxWords: 8).debugDescription)
         check("healed trailing space dropped", Engine.healed("I went to the ") == ("I went to the", ""))
         check("healed newline kept", Engine.healed("- one\n") == ("- one\n", ""))
         // terminal: the typed line is above the agent's status bar
@@ -71,7 +73,7 @@ enum SelfTest {
                                     "The autocomplete keeps repeating what I already wrote. It should instead",
                                     "Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the",
                                     // grammar-sensitive joins: sentence end, mid-word, trailing space, after a comma, a list
-                                    "Thanks for the update. ", "I went to the sto", "Can you send me the ", "If the budget allows,",
+                                    "Thanks for the update. ", "I went to the sto", "Can you send me the ", "If the budget allows,", "The budget covers the ash and the instal",
                                     "Shopping list:\n- eggs\n- milk\n- ", "The meeting is on Thursday at 3pm, so please",
                                     "we should probably", "Hi Sam, hope you're well. I wanted to ask whether"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
             var echoes = 0, empties = 0, total = 0
