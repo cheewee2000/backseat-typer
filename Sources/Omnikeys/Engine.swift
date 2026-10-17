@@ -87,7 +87,18 @@ struct CompletionRequest {
         return s
     }
 
+    /// A suggestion that `clean` threw away as a copy of the screen leaves nothing to show; in Google Docs after a
+    /// full stop the model kept lifting a line from a neighbouring window. Once, retry with the screen text out of the
+    /// prompt so the model has to continue the writer's own text instead.
     func complete(_ r: CompletionRequest, custom: String) async throws -> String {
+        let out = try await completeOnce(r, custom: custom)
+        guard out.isEmpty, !r.screen.isEmpty || r.clipboard != nil else { return out }
+        var bare = r; bare.screen = ""; bare.clipboard = nil
+        let again = try await completeOnce(bare, custom: custom)
+        if !again.isEmpty { Log.w("RETRY without screen text -> \(again.debugDescription)") }
+        return again
+    }
+    func completeOnce(_ r: CompletionRequest, custom: String) async throws -> String {
         // The small models lose the thread when anything follows the typed text, so the prompt is the text alone
         // and everything else (writer notes, samples, clipboard) lives in the instructions. Plain string output:
         // the JSON wrapper of @Generable ate most of a 20-token budget and left one-word suggestions.
