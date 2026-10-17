@@ -86,7 +86,13 @@ enum AX {
     }
 
     static func focusedContext(beforeMax: Int = 1500, afterMax: Int = 400) -> FocusContext? {
-        guard let el = attr(systemWide, kAXFocusedUIElementAttribute as String) else { Log.w("AX: no focused element (front \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"))"); return nil }
+        // Google Docs drops the system-wide focused element while typing; the app itself still knows its focused element.
+        var focused = attr(systemWide, kAXFocusedUIElementAttribute as String)
+        if focused == nil, let front = NSWorkspace.shared.frontmostApplication {
+            focused = attr(AXUIElementCreateApplication(front.processIdentifier), kAXFocusedUIElementAttribute as String)
+            Log.w("AX: no system-wide focused element; app-level focus in \(front.localizedName ?? "?") = \(focused == nil ? "nil" : "ok")")
+        }
+        guard let el = focused else { return nil }
         let element = el as! AXUIElement
         var pid: pid_t = 0; AXUIElementGetPid(element, &pid)
         let app = NSRunningApplication(processIdentifier: pid)

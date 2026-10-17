@@ -51,6 +51,17 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
             }
         case "vault": Vault.shared.loadPlain(path: q["file"] ?? "")   // test data, never saved
         case "fill": controller.fillForm()
+        case "click":   // a real mouse click in the front window (tests: give a web editor keyboard focus). fx/fy are fractions of the window.
+            guard let app = NSWorkspace.shared.frontmostApplication, let win = AX.attr(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute as String),
+                  let pos = AX.attr(win as! AXUIElement, kAXPositionAttribute as String), let size = AX.attr(win as! AXUIElement, kAXSizeAttribute as String) else { Log.w("click: no window"); return }
+            var p = CGPoint.zero, sz = CGSize.zero
+            AXValueGetValue(pos as! AXValue, .cgPoint, &p); AXValueGetValue(size as! AXValue, .cgSize, &sz)
+            let fx = Double(q["fx"] ?? "") ?? 0.5, fy = Double(q["fy"] ?? "") ?? 0.6
+            let at = CGPoint(x: p.x + sz.width * fx, y: p.y + sz.height * fy)
+            for (type, button) in [(CGEventType.leftMouseDown, CGMouseButton.left), (.leftMouseUp, .left)] {
+                CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: at, mouseButton: button)?.post(tap: .cghidEventTap); usleep(40_000)
+            }
+            Log.w("click at \(Int(at.x)),\(Int(at.y)) in \(app.localizedName ?? "?")")
         case "unlearn":   // drop a learned custom field by label (cleanup after a test that learned something it shouldn't)
             let label = q["label"] ?? ""
             let keys = Vault.shared.data.custom.filter { $0.label.caseInsensitiveCompare(label) == .orderedSame }.map(\.key)
