@@ -73,9 +73,11 @@ final class KeyTap {
             }
         }
     }
-    func simulate(key code: UInt16) {
+    func simulate(key code: UInt16, flags: CGEventFlags = []) {
         for down in [true, false] {
-            CGEvent(keyboardEventSource: userSource, virtualKey: code, keyDown: down)?.post(tap: .cghidEventTap)
+            let e = CGEvent(keyboardEventSource: userSource, virtualKey: code, keyDown: down)
+            e?.flags = flags
+            e?.post(tap: .cghidEventTap)
         }
     }
     func char(of event: CGEvent) -> String {

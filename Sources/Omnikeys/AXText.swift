@@ -21,6 +21,7 @@ struct FocusContext {
 
 enum AX {
     static let systemWide = AXUIElementCreateSystemWide()
+    nonisolated(unsafe) static var nudged = Set<pid_t>()   // Chromium processes already switched to full accessibility
 
     static func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
         var v: CFTypeRef?
@@ -80,20 +81,37 @@ enum AX {
         let selected = sel.length > 0 ? (string(element, sel) ?? "") : ""
         // Caret position: right edge of the previous character, else the element's frame.
         var rect: CGRect?
-        if caret > 0, let r = cgRect(param(element, kAXBoundsForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret - 1, length: 1)))), r.height > 1, r.height < 400 {
-            rect = toAppKit(CGRect(x: r.maxX, y: r.minY, width: 0, height: r.height))
-        } else if let r = cgRect(param(element, kAXBoundsForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret, length: 1)))), r.height > 1, r.height < 400 {
-            rect = toAppKit(CGRect(x: r.minX, y: r.minY, width: 0, height: r.height))
-        } else if let p = cgRect(attr(element, kAXPositionAttribute as String).map { pt -> CFTypeRef in pt }).map({ $0 }) {
-            rect = toAppKit(p)
+        var how = "none"
+        if caret > 0, let r = cgRect(param(element, kAXBoundsForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret - 1, length: 1)))), r.height > 1, r.height < 400, r.width < 400 {
+            rect = toAppKit(CGRect(x: r.maxX, y: r.minY, width: 0, height: r.height)); how = "prev-char"
+        } else if let r = cgRect(param(element, kAXBoundsForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret, length: 1)))), r.height > 1, r.height < 400, r.width < 400 {
+            rect = toAppKit(CGRect(x: r.minX, y: r.minY, width: 0, height: r.height)); how = "next-char"
+        } else if let r = cgRect(param(element, kAXBoundsForRangeParameterizedAttribute as String, rangeValue(CFRange(location: caret, length: 0)))), r.height > 1, r.height < 400 {
+            rect = toAppKit(CGRect(x: r.minX, y: r.minY, width: 0, height: r.height)); how = "caret"
+        }
+        // Chromium (Electron, Chrome) answers range bounds with empty rects but gives the caret through text markers,
+        // and only after an assistive client has announced itself with AXManualAccessibility on the app. Nudge once
+        // per process; Chromium rebuilds its tree within a second and the next refresh gets real geometry.
+        if rect == nil, let mr = attr(element, "AXSelectedTextMarkerRange") {
+            if let r = cgRect(param(element, "AXBoundsForTextMarkerRange", mr)), r.height > 1, r.height < 400 {
+                rect = toAppKit(CGRect(x: r.minX, y: r.minY, width: 0, height: r.height)); how = "marker"
+            } else if !nudged.contains(pid) {
+                nudged.insert(pid)
+                AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
+                Log.w("AX: enabled Chromium accessibility for \(app?.localizedName ?? "pid \(pid)")")
+            }
         }
         if rect == nil, let pos = attr(element, kAXPositionAttribute as String), let size = attr(element, kAXSizeAttribute as String) {
             var p = CGPoint.zero, s = CGSize.zero
             if AXValueGetValue(pos as! AXValue, .cgPoint, &p), AXValueGetValue(size as! AXValue, .cgSize, &s) {
                 let f = toAppKit(CGRect(origin: p, size: s))
-                rect = CGRect(x: f.minX + 6, y: f.minY + 4, width: 0, height: min(18, f.height - 8))
+                // No character geometry: top-left of the field for a one-line field, else the bottom-left line.
+                rect = s.height < 60 ? CGRect(x: f.minX + 6, y: f.minY + (f.height - min(18, f.height - 8)) / 2, width: 0, height: min(18, f.height - 8))
+                                     : CGRect(x: f.minX + 6, y: f.maxY - 22, width: 0, height: 18)
+                how = "frame"
             }
         }
+        Log.lastCaretHow = how
         var font: NSFont? = nil
         var color: NSColor? = nil
         func read(_ el: AXUIElement, _ r: CFRange) {

@@ -234,7 +234,8 @@ enum Suggestion: Equatable {
     private func show(_ s: Suggestion) {
         suggestion = s
         guard let c = ctx, let r = c.caretRect else { Log.w("GHOST no caret rect for \(ctx?.role ?? "?") in \(ctx?.appName ?? "?")"); return }
-        if case .fill = s { Log.w("GHOST fill at \(Int(r.minX)),\(Int(r.minY)) h=\(Int(r.height))") }
+        let rgb = c.textColor.usingColorSpace(.sRGB)
+        Log.w("GHOST at \(Int(r.minX)),\(Int(r.minY)) h=\(Int(r.height)) via \(Log.lastCaretHow) colour=\(rgb.map { String(format: "%.2f,%.2f,%.2f", $0.redComponent, $0.greenComponent, $0.blueComponent) } ?? "?") in \(c.appName)/\(c.role)")
         // context font, faded: the suggestion looks like what you're typing, just not yet committed
         ghost.show(s.display, font: c.font, color: c.textColor.withAlphaComponent(0.55), origin: CGPoint(x: r.minX, y: r.minY), lineHeight: r.height, rtl: settings.p.rtl)
     }

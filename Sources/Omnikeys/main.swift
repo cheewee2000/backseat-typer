@@ -41,9 +41,38 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
         let q = Dictionary((url.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
         switch url.host {
         case "type": controller.tap.simulate(text: q["text"] ?? "")
-        case "key": if let c = UInt16(q["code"] ?? "") { controller.tap.simulate(key: c) }
+        case "key":
+            if let c = UInt16(q["code"] ?? "") {
+                var f = CGEventFlags()
+                if q["flags"]?.contains("control") == true { f.insert(.maskControl) }
+                if q["flags"]?.contains("option") == true { f.insert(.maskAlternate) }
+                if q["flags"]?.contains("command") == true { f.insert(.maskCommand) }
+                controller.tap.simulate(key: c, flags: f)
+            }
         case "vault": Vault.shared.loadPlain(path: q["file"] ?? "")   // test data, never saved
         case "fill": controller.fillForm()
+        case "axprobe":   // geometry diagnostics for the focused element
+            guard let el = AX.attr(AX.systemWide, kAXFocusedUIElementAttribute as String) else { Log.w("axprobe: no focus"); return }
+            let e = el as! AXUIElement
+            let sel = AX.cfRange(AX.attr(e, kAXSelectedTextRangeAttribute as String))
+            Log.w("axprobe role=\(AX.attr(e, kAXRoleAttribute as String) as? String ?? "?") sel=\(sel.map { "\($0.location),\($0.length)" } ?? "nil") n=\(AX.attr(e, kAXNumberOfCharactersAttribute as String) as? Int ?? -1)")
+            if let r = sel {
+                for (name, rg) in [("prev", CFRange(location: max(0, r.location - 1), length: 1)), ("next", CFRange(location: r.location, length: 1)), ("caret", CFRange(location: r.location, length: 0))] {
+                    let v = AX.param(e, kAXBoundsForRangeParameterizedAttribute as String, AX.rangeValue(rg))
+                    Log.w("axprobe bounds \(name) = \(v.map { String(describing: AX.cgRect($0)) } ?? "nil")")
+                }
+                if let a = AX.param(e, kAXAttributedStringForRangeParameterizedAttribute as String, AX.rangeValue(CFRange(location: max(0, r.location - 1), length: 1))) as? NSAttributedString, a.length > 0 {
+                    Log.w("axprobe attrs = \(a.attributes(at: 0, effectiveRange: nil).keys.map(\.rawValue).sorted())")
+                } else { Log.w("axprobe attrs = none") }
+            }
+            var names: CFArray?; AXUIElementCopyParameterizedAttributeNames(e, &names)
+            Log.w("axprobe param attrs = \((names as? [String] ?? []).joined(separator: " "))")
+            var plain: CFArray?; AXUIElementCopyAttributeNames(e, &plain)
+            Log.w("axprobe attrs = \((plain as? [String] ?? []).filter { $0.contains("Marker") || $0.contains("Frame") || $0.contains("Insertion") }.joined(separator: " "))")
+            if let mr = AX.attr(e, "AXSelectedTextMarkerRange") {
+                let b = AX.param(e, "AXBoundsForTextMarkerRange", mr)
+                Log.w("axprobe marker-range bounds = \(b.map { String(describing: AX.cgRect($0)) } ?? "nil")")
+            } else { Log.w("axprobe no AXSelectedTextMarkerRange on element") }
         case "importcontacts":
             Task { do { let k = try await Vault.shared.importMeCard(into: Settings.shared.p.fillProfile); Log.w("vault import from Contacts: \(k)") } catch { Log.w("vault import failed: \(error.localizedDescription)") } }
         case "focusfirst":   // focus the first text field of the front window, as a click would
