@@ -244,6 +244,8 @@ struct CompletionRequest {
             }
         }
         if s.trimmingCharacters(in: .whitespaces).isEmpty { return "" }
+        // Punctuation alone ("...", "—") adds nothing to what is being typed.
+        if !s.contains(where: { $0.isLetter || $0.isNumber }) { return "" }
         // A copy of a line that already exists (earlier in the text, after the cursor, or on screen) is not a continuation.
         // The output may finish the last word or start a new one; a copy under either reading is dropped.
         let lastPartial = before.last.map { $0.isLetter || $0.isNumber } == true ? String(before.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).last ?? "") : ""
@@ -281,8 +283,10 @@ struct Steer: LogitProcessor {
     let stop: MLXArray
     var left: Int
     let target: String
+    let newline: MLXArray   // tokens that begin with a line break: not as the first token, the suggestion continues this line
     init(stop: [Int], left: Int, target: String, vocab: [(String, Int32)], tokenizer: MLXLMCommon.Tokenizer) {
         self.stop = MLXArray(stop.map { Int32($0) }); self.left = left; self.target = target; self.vocab = vocab; self.tokenizer = tokenizer
+        self.newline = MLXArray(vocab.filter { $0.0.hasPrefix("\n") || $0.0.hasPrefix("\r") }.map(\.1))
     }
     let vocab: [(String, Int32)]   // token text (space for ▁), sorted by text
     let tokenizer: MLXLMCommon.Tokenizer
@@ -307,6 +311,8 @@ struct Steer: LogitProcessor {
         guard left > 0 else { return logits }
         let l = logits
         l[.ellipsis, stop] = MLXArray(-Float.infinity)
+        // After a full stop the model likes to open a new paragraph, and the single-line rule then shows nothing.
+        if ids.isEmpty, newline.size > 0 { l[.ellipsis, newline] = MLXArray(-Float.infinity) }
         return l
     }
     mutating func didSample(token: MLXArray) {

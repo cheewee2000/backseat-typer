@@ -33,6 +33,7 @@ enum SelfTest {
         check("window chrome copy dropped", Engine.clean(before: "so the\n", raw: "229 notes\nOctober 17", maxWords: 8, existing: "Notes | 229 notes | October 17, 2026 at 3:36 PM") == "")
         check("short overlap with chrome kept", Engine.clean(before: "I counted", raw: " 229 notes in", maxWords: 8, existing: "Notes | 229 notes | October 17") == " 229 notes in")
         check("quote fragment continuation kept", Engine.clean(before: "when i type in something like \"this is showing similar issues\" the autocomplete is \"s", raw: "ometimes it is showing similar issues\"", maxWords: 8, glued: true) == "ometimes it is showing similar issues", Engine.clean(before: "when i type in something like \"this is showing similar issues\" the autocomplete is \"s", raw: "ometimes it is showing similar issues\"", maxWords: 8, glued: true).debugDescription)
+        check("punctuation-only dropped", Engine.clean(before: "See you on", raw: "...", maxWords: 8) == "")
         check("glued flag keeps no space", Engine.clean(before: "covers the instal", raw: "ment.", maxWords: 8, glued: true) == "ment.")
         check("healed trailing space dropped", Engine.healed("I went to the ") == ("I went to the", ""))
         check("healed newline kept", Engine.healed("- one\n") == ("- one\n", ""))
@@ -85,6 +86,20 @@ enum SelfTest {
                                     "Dear Ms. Alvarez,\n\nThank you for your letter of 12 March regarding", "lol yeah that was",
                                     "The sensor reads 3.3 V at idle and", "Taylor said she would", "Please find attached the",
                                     "I'm not sure if", "He didn't", "They've been working on the", "Our team of four", "After lunch we"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
+            // Context awareness: the right continuation names a fact set earlier in the text. Scored by keyword.
+            let aware: [(String, [String])] = [
+                ("Hi Priya,\n\nThanks for the call. The bench is for Harbor Parks and the install is set for March 14, so we will ship the week of", ["march"]),
+                ("Our contact there is Priya Raman. I will send the drawings to", ["priya", "her"]),
+                ("The quote came to $48,000 all in. Please invoice the first half, which is", ["24", "$"]),
+                ("We are using thermally modified ash for the slats. The ash", ["ash", "slat", "wood", "weather", "durab", "grain", "colour", "color", "finish", "porous", "moisture", "absorb", "stable", "rot", "warp"]),
+                ("Taylor and I met the client on Tuesday. On Wednesday", ["taylor", "we", "i ", "client"]),
+                ("The sensor reads 3.3 V at idle and 5 V under load, so the regulator must handle at least", ["5", "v"]),
+                ("Dear Ms. Alvarez,\n\nThank you for your letter. I agree with you, Ms.", ["alvarez"]),
+                ("Shopping list for the lasagna:\n- pasta sheets\n- ricotta\n- ", ["tomato", "cheese", "beef", "spinach", "mozzarella", "sauce", "parmesan", "onion", "garlic", "egg"]),
+                ("The meeting moved from Thursday to Friday at 3pm. See you on", ["friday"]),
+                ("My daughter Mei starts school in September. We are looking for a backpack for", ["mei", "her", "school"]),
+            ]
+            var hits = 0
             var echoes = 0, empties = 0, total = 0, grammar = 0
             // A grammar issue is a sentence NSSpellChecker flags in before+suggestion that was not flagged in before alone.
             func grammarIssue(_ c: String, _ out: String) -> String? {
@@ -119,7 +134,15 @@ enum SelfTest {
                         print("BENCH \(ms)ms\(echo ? " ECHO" : "")\(g.map { " GRAMMAR[\($0)]" } ?? "") \(c.suffix(60).debugDescription) -> \(out.debugDescription)")
                     }
                 }
-                if bench { print("BENCH SUMMARY \(contexts.count) contexts, \(echoes) echoes, \(empties) empty, \(grammar) grammar flags, mean \(total / contexts.count)ms") }
+                if bench {
+                    for (c, keys) in aware {
+                        let o = (try? await e.complete(CompletionRequest(before: c, after: "", clipboard: nil, appName: "Mail", appInstructions: "", examples: [], length: .medium, british: false, model: modelID), custom: "")) ?? ""
+                        let hit = keys.contains { o.lowercased().contains($0) }
+                        hits += hit ? 1 : 0
+                        print("AWARE \(hit ? "HIT " : "MISS") \(c.suffix(50).debugDescription) -> \(o.debugDescription)")
+                    }
+                    print("BENCH SUMMARY \(contexts.count) contexts, \(echoes) echoes, \(empties) empty, \(grammar) grammar flags, mean \(total / contexts.count)ms; context awareness \(hits)/\(aware.count)")
+                }
                 done = true
             }
             // Pump the main run loop instead of blocking it: the MLX loader runs on the main actor.
