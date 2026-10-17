@@ -60,6 +60,7 @@ struct CompletionRequest {
         LanguageModelSession(model: model, instructions: Engine.baseInstructions).prewarm()
     }
 
+    static let repetitionPenalty: Float = 1.15
     static let baseInstructions = """
     You are an inline autocomplete engine, like predictive text on a keyboard. The user is typing. You output only the words that come next, continuing their text seamlessly in the same language, register and style. Never explain, never comment, never wrap the output in quotes. If the text ends mid-word, finish that word first. Never repeat text that is already written: not the words just before the cursor, and not a sentence or list item that appears earlier in the text or elsewhere on screen. Say something new.
     """
@@ -103,12 +104,14 @@ struct CompletionRequest {
             let session = LanguageModelSession(model: model, instructions: ins)
             out = try await session.respond(to: prompt, options: GenerationOptions(sampling: .greedy, temperature: 0, maximumResponseTokens: tokens)).content
         } else {
+            // Repetition penalty over the recent context discourages re-emitting the writer's own words. Knob for the bench.
+            let rep = Float(ProcessInfo.processInfo.environment["OMNIKEYS_REP"] ?? "") ?? Engine.repetitionPenalty
             let session = ChatSession(try await mlx(r.model), instructions: ins,
-                                      generateParameters: GenerateParameters(maxTokens: tokens, temperature: 0),
+                                      generateParameters: GenerateParameters(maxTokens: tokens, temperature: 0, repetitionPenalty: rep > 1 ? rep : nil, repetitionContextSize: 128),
                                       additionalContext: ["enable_thinking": false])
             out = try await session.respond(to: prompt)
         }
-        Log.w("RAW \(String(r.before.suffix(80)).debugDescription) -> \(out.debugDescription)")
+        Log.w("RAW \(String(r.before.suffix(160)).debugDescription) -> \(out.debugDescription)")
         let existing = ([r.after, r.clipboard ?? ""] + r.examples + [r.screen]).joined(separator: "\n")
         return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20), existing: existing)
     }
@@ -136,6 +139,14 @@ struct CompletionRequest {
     static func norm(_ s: String) -> String {
         s.lowercased().replacingOccurrences(of: #"[\s\p{P}\p{C}]+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
     }
+    /// A suggestion whose opening words (the first four, or all of a three-word one) already sit in `pool` is a copy,
+    /// even when the model tacks a new word on the end. Inputs are `norm`ed.
+    static func isCopy(_ candidates: [String], of pool: String) -> Bool {
+        candidates.contains { c in
+            let w = c.split(separator: " "); guard w.count >= 3 else { return false }
+            return pool.contains(w.prefix(4).joined(separator: " "))
+        }
+    }
     /// `existing` is other text the model could have copied (after the cursor, on screen).
     static func clean(before: String, raw: String, maxWords: Int, existing: String = "") -> String {
         var s = raw.replacingOccurrences(of: "\r", with: "")
@@ -159,12 +170,10 @@ struct CompletionRequest {
         }
         if s.trimmingCharacters(in: .whitespaces).isEmpty { return "" }
         // A copy of a line that already exists (earlier in the text, after the cursor, or on screen) is not a continuation.
+        // The output may finish the last word or start a new one; a copy under either reading is dropped.
         let lastPartial = before.last.map { $0.isLetter || $0.isNumber } == true ? String(before.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).last ?? "") : ""
-        let candidate = norm((s.first?.isLetter == true && !lastPartial.isEmpty ? lastPartial : "") + s)
-        if candidate.split(separator: " ").count >= 4 {
-            let pool = norm(String(before.suffix(3000))) + " \n " + norm(String(existing.prefix(6000)))
-            if pool.contains(candidate) { return "" }
-        }
+        let candidates = [norm(s)] + (s.first?.isLetter == true && !lastPartial.isEmpty ? [norm(lastPartial + s)] : [])
+        if Engine.isCopy(candidates, of: norm(String(before.suffix(3000))) + " \n " + norm(String(existing.prefix(6000)))) { return "" }
         // Joining: a new word after a complete word needs a space; mid-word it must not have one.
         let lastChar = before.last
         let firstChar = s.first!

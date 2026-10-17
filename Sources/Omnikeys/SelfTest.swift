@@ -17,6 +17,10 @@ enum SelfTest {
         check("copied screen line dropped", Engine.clean(before: "Hi Taylor, ", raw: "Confirm the SOW will read as a fixed", maxWords: 8, existing: "todo: confirm the SOW will read as a fixed fee") == "")
         check("case-insensitive overlap", Engine.clean(before: "Please review the Projections", raw: "review the projections and finalize", maxWords: 8) == " and finalize", Engine.clean(before: "Please review the Projections", raw: "review the projections and finalize", maxWords: 8).debugDescription)
         check("short repeat allowed", Engine.clean(before: "I said yes and", raw: " yes", maxWords: 8) == " yes")
+        check("copied phrase after a letter dropped", Engine.clean(before: "i get \"try the same sentence again\" if i type in, this", raw: "try the same sentence again if", maxWords: 8) == "")
+        check("copy plus a new word dropped", Engine.clean(before: "like \"this is showing similar issues\" the autocomplete is \"s", raw: "this is showing similar issues with", maxWords: 8) == "")
+        check("common opener kept", Engine.clean(before: "I think the plan is fine. I think", raw: " we should go ahead with it", maxWords: 8) == " we should go ahead with it")
+        check("three-word copy dropped", Engine.clean(before: "like \"this is showing similar issues\" the autocomplete is \"", raw: "showing similar issues", maxWords: 8) == "")
         check("label echo dropped", Engine.clean(before: "I had a look at the sketches.", raw: "continuation", maxWords: 8) == "")
         check("single line", Engine.clean(before: "Hi", raw: " there\nmore", maxWords: 8) == " there")
         // terminal: the typed line is above the agent's status bar
@@ -52,7 +56,14 @@ enum SelfTest {
             let bench = ProcessInfo.processInfo.environment["OMNIKEYS_BENCH"] != nil
             let contexts = bench ? ["What are we doing with all this stuff", "Elizabeth Holmes is the", "I went to the store to buy some",
                                     "Hey, are you free for lunch on", "The bench has a rocker sole so it", "Can you send me the invoice for the",
+                                    // echo-prone: agent prompt lines and text that quotes itself
+                                    "─────────────\n❯ ok trying the same sentence", "─────────────\n❯ how are we doing",
+                                    "when i type in something like \"this is showing similar issues\" the autocomplete is \"s",
+                                    "ok trying the same sentence. when i do that, i get \"try the same sentence again\" if i type in, this",
+                                    "- Confirm the SOW will read as a fixed fee\n- Send the drawings to Taylor\n- ",
+                                    "The autocomplete keeps repeating what I already wrote. It should instead",
                                     "Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
+            var echoes = 0, empties = 0, total = 0
             Task {
                 for (i, c) in contexts.enumerated() {
                     let t0 = Date()
@@ -60,8 +71,14 @@ enum SelfTest {
                         out = try await e.complete(CompletionRequest(before: c, after: "", clipboard: nil, appName: "Mail", appInstructions: "", examples: [], length: .medium, british: false, model: modelID), custom: "")
                     } catch { err = "\(error)" }
                     ms = Int(Date().timeIntervalSince(t0) * 1000)
-                    if bench, i < contexts.count - 1 { print("BENCH \(ms)ms \(c.debugDescription) -> \(out.debugDescription)") }
+                    if bench {
+                        // An echo: three or more words of the suggestion already sit in the context.
+                        let echo = Engine.isCopy([Engine.norm(out)], of: Engine.norm(c))
+                        echoes += echo ? 1 : 0; empties += out.isEmpty ? 1 : 0; total += ms
+                        print("BENCH \(ms)ms\(echo ? " ECHO" : "") \(c.suffix(60).debugDescription) -> \(out.debugDescription)")
+                    }
                 }
+                if bench { print("BENCH SUMMARY \(contexts.count) contexts, \(echoes) echoes, \(empties) empty, mean \(total / contexts.count)ms") }
                 done = true
             }
             // Pump the main run loop instead of blocking it: the MLX loader runs on the main actor.
