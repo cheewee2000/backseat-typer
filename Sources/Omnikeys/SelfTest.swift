@@ -30,6 +30,8 @@ enum SelfTest {
         check("healed whole word kept", Engine.healed("I went to the") == ("I went to the", ""))
         check("healed retype", Engine.healed("the instal", retype: true) == ("the", "instal"))
         check("glued word continuation keeps no space", Engine.clean(before: "covers the instal", raw: "lation.", maxWords: 8) == "lation.", Engine.clean(before: "covers the instal", raw: "lation.", maxWords: 8).debugDescription)
+        check("window chrome copy dropped", Engine.clean(before: "so the\n", raw: "229 notes\nOctober 17", maxWords: 8, existing: "Notes | 229 notes | October 17, 2026 at 3:36 PM") == "")
+        check("short overlap with chrome kept", Engine.clean(before: "I counted", raw: " 229 notes in", maxWords: 8, existing: "Notes | 229 notes | October 17") == " 229 notes in")
         check("glued flag keeps no space", Engine.clean(before: "covers the instal", raw: "ment.", maxWords: 8, glued: true) == "ment.")
         check("healed trailing space dropped", Engine.healed("I went to the ") == ("I went to the", ""))
         check("healed newline kept", Engine.healed("- one\n") == ("- one\n", ""))

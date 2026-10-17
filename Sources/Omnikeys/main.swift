@@ -51,6 +51,19 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
             }
         case "vault": Vault.shared.loadPlain(path: q["file"] ?? "")   // test data, never saved
         case "fill": controller.fillForm()
+        case "focusrole":   // give keyboard focus to the first element of a role in the front window (tests: a note's body)
+            guard let app = NSWorkspace.shared.frontmostApplication, let win = AX.attr(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute as String) else { Log.w("focusrole: no window"); return }
+            let want = q["role"] ?? "AXTextArea"
+            var stack: [AXUIElement] = [win as! AXUIElement], n = 0
+            while let e = stack.popLast(), n < 3000 {
+                n += 1
+                if (AX.attr(e, kAXRoleAttribute as String) as? String) == want {
+                    let r = AXUIElementSetAttributeValue(e, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                    Log.w("focusrole: \(want) focus -> \(r.rawValue) value=\(((AX.attr(e, kAXValueAttribute as String) as? String) ?? "").prefix(60).debugDescription)"); return
+                }
+                stack += (AX.attr(e, kAXChildrenAttribute as String) as? [AXUIElement]) ?? []
+            }
+            Log.w("focusrole: no \(want) in \(n) elements")
         case "axfind":   // walk the focused window for caret-shaped elements (Google Docs draws its own caret as a DOM div)
             guard let el = AX.attr(AX.systemWide, kAXFocusedUIElementAttribute as String) else { Log.w("axfind: no focus"); return }
             var pid: pid_t = 0; AXUIElementGetPid(el as! AXUIElement, &pid)

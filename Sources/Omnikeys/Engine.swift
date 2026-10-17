@@ -205,6 +205,11 @@ struct CompletionRequest {
             return pool.contains(w.prefix(4).joined(separator: " "))
         }
     }
+    /// Screen text arrives as segments split by " | " and newlines; a suggestion equal to a whole segment is a copy of it.
+    static func isChrome(_ c: String, of existing: String) -> Bool {
+        guard c.split(separator: " ").count >= 2 else { return false }
+        return existing.split(whereSeparator: { $0 == "|" || $0 == "\n" }).contains { norm(String($0)) == c }
+    }
     /// `existing` is other text the model could have copied (after the cursor, on screen).
     /// `glued`: the output is known to continue the last word (healed fragment), so no space is inserted.
     static func clean(before: String, raw: String, maxWords: Int, existing: String = "", glued: Bool = false) -> String {
@@ -233,6 +238,8 @@ struct CompletionRequest {
         let lastPartial = before.last.map { $0.isLetter || $0.isNumber } == true ? String(before.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).last ?? "") : ""
         let candidates = [norm(s)] + (s.first?.isLetter == true && !lastPartial.isEmpty ? [norm(lastPartial + s)] : [])
         if Engine.isCopy(candidates, of: norm(String(before.suffix(3000))) + " \n " + norm(String(existing.prefix(6000)))) { return "" }
+        // A suggestion that is, whole, one piece of window chrome ("229 notes", a date, a tab title) is a copy however short.
+        if Engine.isChrome(norm(s), of: existing) { return "" }
         // Joining: a new word after a complete word needs a space; mid-word it must not have one.
         let lastChar = before.last
         let firstChar = s.first!
