@@ -48,7 +48,7 @@ struct Prefs: Codable {
     var tabEnabled = true
     var escBehavior = EscBehavior.pauseBriefly
     var midLine = true
-    var clipboardAwareness = true
+    var clipboardAwareness = false   // off: measured to derail the 3B model
     var fullAutocorrect = true
     var emojiSuggestions = true
     var completeInCodeEditors = false

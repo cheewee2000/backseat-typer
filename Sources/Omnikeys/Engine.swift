@@ -56,25 +56,30 @@ final class Engine {
         if r.british { s += "\nUse British English spelling." }
         if !custom.isEmpty { s += "\n\nAbout the writer: \(custom)" }
         if !r.appInstructions.isEmpty { s += "\n\nWhen writing in \(r.appName): \(r.appInstructions)" }
-        if !r.examples.isEmpty {
-            s += "\n\nSamples of how this writer writes. Favor their vocabulary and phrasing:\n" + r.examples.map { "- \($0)" }.joined(separator: "\n")
+        // A sample taken from this very document makes the model echo it instead of continuing.
+        let head = String(r.before.prefix(40))
+        let ex = r.examples.filter { head.count < 20 || !$0.contains(head) }
+        if !ex.isEmpty {
+            s += "\n\nSamples of how this writer writes. Favor their vocabulary and phrasing:\n" + ex.map { "- \($0)" }.joined(separator: "\n")
         }
         return s
     }
 
     func complete(_ r: CompletionRequest, custom: String) async throws -> String {
-        let session = LanguageModelSession(model: model, instructions: instructions(r, custom: custom))
-        var prompt = "Text before the cursor:\n\(r.before.suffix(1500))"
+        // The 3B model loses the thread when anything follows the typed text, so the prompt is the text alone
+        // and everything else (writer notes, samples, clipboard) lives in the instructions. Plain string output:
+        // the JSON wrapper of @Generable ate most of a 20-token budget and left one-word suggestions.
+        var ins = instructions(r, custom: custom)
+        if let c = r.clipboard, !c.isEmpty { ins += "\n\nThe writer's clipboard, which may be relevant:\n\(c.prefix(300))" }
         let afterLine = r.after.prefix(while: { $0 != "\n" })
-        if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty {
-            prompt += "\n\nText after the cursor on the same line (your words must fit before it):\n\(afterLine)"
-        }
-        if let c = r.clipboard, !c.isEmpty { prompt += "\n\nClipboard contents, which may be relevant:\n\(c.prefix(300))" }
-        prompt += "\n\nWrite only the continuation that goes at the cursor."
+        if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty { ins += "\n\nThe text after the cursor is: \(afterLine.prefix(200))\nYour words must fit before it." }
+        ins += "\n\nExample:\nText: I went to the\nContinuation: store to pick up milk"
+        let session = LanguageModelSession(model: model, instructions: ins)
+        let prompt = "Text: \(r.before.suffix(1500))\nContinuation:"
         let tokens: Int
-        switch r.length { case .short: tokens = 10; case .medium: tokens = 20; case .long: tokens = 40 }
+        switch r.length { case .short: tokens = 12; case .medium: tokens = 24; case .long: tokens = 48 }
         let opts = GenerationOptions(sampling: .greedy, temperature: 0, maximumResponseTokens: tokens)
-        let out = try await session.respond(to: prompt, generating: Continuation.self, options: opts).content.text
+        let out = try await session.respond(to: prompt, options: opts).content
         return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20))
     }
 
