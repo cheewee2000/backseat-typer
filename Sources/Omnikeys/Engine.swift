@@ -1,6 +1,7 @@
 import AppKit
 import FoundationModels
 import Observation
+import MLX
 import MLXLLM
 import MLXLMCommon
 import MLXHuggingFace
@@ -60,17 +61,19 @@ struct CompletionRequest {
         LanguageModelSession(model: model, instructions: Engine.baseInstructions).prewarm()
     }
 
-    static let repetitionPenalty: Float = 1.15
     static let baseInstructions = """
     You are an inline autocomplete engine, like predictive text on a keyboard. The user is typing. You output only the words that come next, continuing their text seamlessly in the same language, register and style. Never explain, never comment, never wrap the output in quotes. If the text ends mid-word, finish that word first. Never repeat text that is already written: not the words just before the cursor, and not a sentence or list item that appears earlier in the text or elsewhere on screen. Say something new.
     """
 
     func instructions(_ r: CompletionRequest, custom: String) -> String {
         var s = Engine.baseInstructions
-        switch r.length {
-        case .short: s += "\nSuggest at most 3 words."
-        case .medium: s += "\nSuggest about 4 to 7 words, ending at a natural break."
-        case .long: s += "\nSuggest up to one full sentence."
+        // The MLX path continues the text itself, so a word count only makes it pad ("…immediately now"); the caps trim.
+        if r.model == Models.apple {
+            switch r.length {
+            case .short: s += "\nSuggest at most 3 words."
+            case .medium: s += "\nSuggest about 4 to 7 words, ending at a natural break."
+            case .long: s += "\nSuggest up to one full sentence."
+            }
         }
         if r.british { s += "\nUse British English spelling." }
         if !custom.isEmpty { s += "\n\nAbout the writer: \(custom)" }
@@ -95,23 +98,36 @@ struct CompletionRequest {
         if !r.screen.isEmpty {
             ins += "\n\nOther text visible on screen right now (the rest of this window, then windows beside it). Use the names, numbers and facts in it when the sentence calls for them, but do not copy sentences from it:\n\(r.screen.prefix(3200))"
         }
-        ins += "\n\nExample:\nText: I went to the\nContinuation: store to pick up milk"
-        let prompt = "Text: \(r.before.suffix(1500))\nContinuation:"
         let tokens: Int
         switch r.length { case .short: tokens = 12; case .medium: tokens = 24; case .long: tokens = 48 }
-        let out: String
+        var out: String
         if r.model == Models.apple {
+            ins += "\n\nExample:\nText: I went to the\nContinuation: store to pick up milk"
             let session = LanguageModelSession(model: model, instructions: ins)
-            out = try await session.respond(to: prompt, options: GenerationOptions(sampling: .greedy, temperature: 0, maximumResponseTokens: tokens)).content
+            out = try await session.respond(to: "Text: \(r.before.suffix(1500))\nContinuation:", options: GenerationOptions(sampling: .greedy, temperature: 0, maximumResponseTokens: tokens)).content
         } else {
-            // Repetition penalty over the recent context discourages re-emitting the writer's own words. Knob for the bench.
-            let rep = Float(ProcessInfo.processInfo.environment["OMNIKEYS_REP"] ?? "") ?? Engine.repetitionPenalty
-            let session = ChatSession(try await mlx(r.model), instructions: ins,
-                                      generateParameters: GenerateParameters(maxTokens: tokens, temperature: 0, repetitionPenalty: rep > 1 ? rep : nil, repetitionContextSize: 128),
-                                      additionalContext: ["enable_thinking": false])
-            out = try await session.respond(to: prompt)
+            // Prefill: the model's own turn starts with the writer's text, so the next tokens are plain language-model
+            // continuation of it rather than an answer about it. The screen dump used to win that contest and the same
+            // suggestion came back whatever was typed.
+            ins += "\n\nYour reply starts with the writer's text so far, exactly as they wrote it. Keep writing from where it stops."
+            let (prefill, partial) = Engine.healed(String(r.before.suffix(2000)))
+            out = try await mlx(r.model).perform { (ctx: ModelContext) -> String in
+                var ids = try ctx.tokenizer.applyChatTemplate(messages: [["role": "user", "content": ins]], tools: nil, additionalContext: ["enable_thinking": false])
+                ids += ctx.tokenizer.encode(text: prefill, addSpecialTokens: false)
+                let input = LMInput(tokens: MLXArray(ids))
+                // An instruct model likes to end its turn after a finished sentence; a suggestion is wanted anyway.
+                let stops = Array(ctx.configuration.eosTokenIds) + ([ctx.tokenizer.eosTokenId, ctx.tokenizer.unknownTokenId] + ctx.configuration.extraEOSTokens.map { ctx.tokenizer.convertTokenToId($0) }).compactMap { $0 }
+                let it = try TokenIterator(input: input, model: ctx.model, processor: NoEarlyStop(stop: stops, left: 3), sampler: ArgMaxSampler(), maxTokens: tokens)
+                return MLXLMCommon.generate(input: input, context: ctx, iterator: it) { (_: [Int]) in .more }.output
+            }
+            Log.w("RAW \(String(r.before.suffix(160)).debugDescription) -> \(out.debugDescription)\(partial.isEmpty ? "" : " (healing \(partial))")")
+            // Token healing: the model re-typed the fragment from the word boundary; it must agree with what was typed.
+            if !partial.isEmpty {
+                let t = out.drop(while: { $0 == " " })
+                out = t.lowercased().hasPrefix(partial.lowercased()) ? String(t.dropFirst(partial.count)) : ""
+            }
         }
-        Log.w("RAW \(String(r.before.suffix(160)).debugDescription) -> \(out.debugDescription)")
+        if r.model == Models.apple { Log.w("RAW \(String(r.before.suffix(160)).debugDescription) -> \(out.debugDescription)") }
         let existing = ([r.after, r.clipboard ?? ""] + r.examples + [r.screen]).joined(separator: "\n")
         return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20), existing: existing)
     }
@@ -135,6 +151,19 @@ struct CompletionRequest {
         catch { mlxState[id] = "FAILED: \(error.localizedDescription)"; mlxLoads[id] = nil; throw error }
     }
 
+    /// Token healing for the prefill. A trailing fragment that is not a word ("sto") would tokenize unlike the word it
+    /// starts, so it is left off the prefill and the model types it again; trailing spaces likewise, since a word
+    /// token carries its own leading space. Returns the text to prefill and the fragment the output must start with.
+    static func healed(_ before: String) -> (prefill: String, partial: String) {
+        var p = before
+        var partial = ""
+        if let l = p.last, l.isLetter || l.isNumber {
+            let w = String(p.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).last ?? "")
+            if !Spell.isWord(w) { partial = w; p = String(p.dropLast(w.count)) }
+        }
+        p = String(p.reversed().drop(while: { $0 == " " }).reversed())
+        return (p, partial)
+    }
     /// Normalizes raw model output into a ghost-text continuation.
     static func norm(_ s: String) -> String {
         s.lowercased().replacingOccurrences(of: #"[\s\p{P}\p{C}]+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
@@ -185,12 +214,30 @@ struct CompletionRequest {
         } else if lastChar == nil, firstChar == " " {
             s = String(s.drop(while: { $0 == " " }))
         }
-        // Cap the word count at a boundary; collapses runs of spaces too.
+        // Cap the word count at a boundary; collapses runs of spaces too. A cap that cuts mid-clause backs up to the
+        // last clause break instead, when that keeps most of the words: "…look great, I think we" → "…look great,".
         let lead = s.prefix(while: { $0 == " " })
-        let words = s.dropFirst(lead.count).split(separator: " ", omittingEmptySubsequences: true).prefix(maxWords)
+        let all = s.dropFirst(lead.count).split(separator: " ", omittingEmptySubsequences: true)
+        var words = Array(all.prefix(maxWords))
+        if all.count > maxWords, let i = words.lastIndex(where: { ",;:.!?".contains($0.last!) }), i + 1 >= maxWords / 2 { words = Array(words[...i]) }
         s = String(lead) + words.joined(separator: " ")
         return s
     }
+}
+
+/// Masks the end-of-turn tokens for the first `left` generated tokens.
+struct NoEarlyStop: LogitProcessor {
+    let stop: MLXArray
+    var left: Int
+    init(stop: [Int], left: Int) { self.stop = MLXArray(stop.map { Int32($0) }); self.left = left }
+    mutating func prompt(_ prompt: MLXArray) {}
+    func process(logits: MLXArray) -> MLXArray {
+        guard left > 0 else { return logits }
+        let l = logits
+        l[.ellipsis, stop] = MLXArray(-Float.infinity)
+        return l
+    }
+    mutating func didSample(token: MLXArray) { left -= 1 }
 }
 
 enum Spell {

@@ -23,6 +23,13 @@ enum SelfTest {
         check("three-word copy dropped", Engine.clean(before: "like \"this is showing similar issues\" the autocomplete is \"", raw: "showing similar issues", maxWords: 8) == "")
         check("label echo dropped", Engine.clean(before: "I had a look at the sketches.", raw: "continuation", maxWords: 8) == "")
         check("single line", Engine.clean(before: "Hi", raw: " there\nmore", maxWords: 8) == " there")
+        check("cap backs up to clause break", Engine.clean(before: "I had a look at the", raw: " drawings and they look great, I think we should", maxWords: 8) == " drawings and they look great,", Engine.clean(before: "I had a look at the", raw: " drawings and they look great, I think we should", maxWords: 8).debugDescription)
+        check("cap keeps words when break is early", Engine.clean(before: "x", raw: " Yes, we can do that for you next week", maxWords: 8) == " Yes, we can do that for you next")
+        // prefill token healing
+        check("healed fragment", Engine.healed("I went to the sto") == ("I went to the", "sto"), "\(Engine.healed("I went to the sto"))")
+        check("healed whole word kept", Engine.healed("I went to the") == ("I went to the", ""))
+        check("healed trailing space dropped", Engine.healed("I went to the ") == ("I went to the", ""))
+        check("healed newline kept", Engine.healed("- one\n") == ("- one\n", ""))
         // terminal: the typed line is above the agent's status bar
         let tui = "─────\n> show a ti        \n─────\n  ⏵⏵ auto mode on · ← 1 agent"
         check("terminal input line", Controller.agentInput(tui) == "─────\n> show a ti", Controller.agentInput(tui).debugDescription)
@@ -62,7 +69,11 @@ enum SelfTest {
                                     "ok trying the same sentence. when i do that, i get \"try the same sentence again\" if i type in, this",
                                     "- Confirm the SOW will read as a fixed fee\n- Send the drawings to Taylor\n- ",
                                     "The autocomplete keeps repeating what I already wrote. It should instead",
-                                    "Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
+                                    "Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the",
+                                    // grammar-sensitive joins: sentence end, mid-word, trailing space, after a comma, a list
+                                    "Thanks for the update. ", "I went to the sto", "Can you send me the ", "If the budget allows,",
+                                    "Shopping list:\n- eggs\n- milk\n- ", "The meeting is on Thursday at 3pm, so please",
+                                    "we should probably", "Hi Sam, hope you're well. I wanted to ask whether"] : ["Dear Taylor,\n\nThanks for sending the drawings over. I had a look at the"]
             var echoes = 0, empties = 0, total = 0
             Task {
                 for (i, c) in contexts.enumerated() {

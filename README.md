@@ -25,3 +25,6 @@ CWT_STENGW9_2609
 ## App notes
 - **Google Docs** draws the document on a canvas. Turn on Tools › Accessibility › screen reader support (⌘⌥Z) in Docs; the hidden edit target then carries the current paragraph, and the caret is read from Docs' own `kix-cursor` element. Without it the context is one character and the log says `skip: short context`.
 - **Terminals** complete from the agent prompt line (`>`, `›`, `❯`); the AX caret sits below the status bar. Knife Terminal pads empty cells with NUL, mapped to spaces.
+
+## How a suggestion is made (MLX models)
+The instructions, writer notes, samples and screen text go in the user turn; the model's own turn is prefilled with the text being typed, so the next tokens are plain continuation of it rather than an answer about it. The end-of-turn tokens are masked for the first three tokens so a finished sentence still gets a next one. A trailing fragment that is not a word (`sto`) is left off the prefill and must come back in the output (token healing). `Engine.clean` then strips overlap, drops copies of text already on screen, and trims the word cap back to a clause break. Bench: `OMNIKEYS_BENCH=1 OMNIKEYS_MODEL=mlx-community/gemma-4-e2b-it-4bit ~/Applications/Omnikeys.app/Contents/MacOS/Omnikeys --selftest`.
