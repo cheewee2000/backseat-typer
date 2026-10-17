@@ -1,6 +1,6 @@
 # Backseat Typer
 
-Predictive text for every Mac text field, on-device. A Cotypist-style clone with the full Pro feature set. Runs on Apple's built-in foundation model (macOS 26, Apple Silicon, Apple Intelligence on) or on the open-weight models Cotypist ships, Gemma 4 E2B/E4B and Qwen, pulled from Hugging Face on first use and run by MLX.
+Predictive text for every Mac text field, on-device: a backseat driver for your typing. Formerly Omnikeys. A Cotypist-style clone with the full Pro feature set. Runs on Apple's built-in foundation model (macOS 26, Apple Silicon, Apple Intelligence on) or on the open-weight models Cotypist ships, Gemma 4 E2B/E4B and Qwen, pulled from Hugging Face on first use and run by MLX.
 
 - Ghost text a few words ahead of the cursor in any text field (Accessibility API), drawn in the field's own font and colour at 40% opacity.
 - Tab completes the next word, ` accepts the full completion, Esc dismisses, Ctrl+` force-activates, Ctrl+Opt+Cmd+` toggles the current app. All shortcuts configurable.
@@ -16,9 +16,9 @@ Predictive text for every Mac text field, on-device. A Cotypist-style clone with
     ./scripts/e2e.sh        # self-test + 4 live loops in TextEdit: completion/Tab/backtick, typo fix, emoji, Esc
     BACKSEAT_MODEL=mlx-community/gemma-4-e2b-it-4bit ~/Applications/BackseatTyper.app/Contents/MacOS/BackseatTyper --selftest   # same check on an MLX model
 
-The e2e script launches the app with `--e2e`, which enables an `backseattyper://type` / `backseattyper://key` URL driver so the AX-trusted app types for the (untrusted) shell. The driver is off in normal launches.
+The e2e script launches the app with `--e2e`, which enables a `backseattyper://type` / `backseattyper://key` URL driver so the AX-trusted app types for the (untrusted) shell. The driver is off in normal launches.
 
-Context comes from the Accessibility API, never from screenshots: the text around the caret, the rest of the focused window (an email thread above the reply box, a chat history) and up to three other windows visible beside it, limited to elements actually on screen. Toggle in Settings. Grant Accessibility to Backseat Typer once (System Settings → Privacy & Security → Accessibility). Log: `~/Library/Logs/BackseatTyper.log`.
+Context comes from the Accessibility API, never from screenshots: the text around the caret, the rest of the focused window (an email thread above the reply box, a chat history) and up to three other windows visible beside it, limited to elements actually on screen. Toggle in Settings. Grant Accessibility to Backseat Typer once (System Settings → Privacy & Security → Accessibility). Log: `~/Library/Logs/BackseatTyper.log`. The car seat in the menu bar dims while suggestions are paused.
 
 CWT_STENGW9_2609
 
