@@ -5,9 +5,13 @@ cd "$(dirname "$0")"
 V=$(cat VERSION)
 SCRATCH="$HOME/Library/Caches/omnikeys/.build"   # outside Dropbox: conflicted copies break codesign
 APP="$HOME/Applications/Omnikeys.app"
-swift build -c release --scratch-path "$SCRATCH" 2>&1 | grep -E "error|warning: unre|Compiling|Build complete" | tail -5
+# xcodebuild, not swift build: SwiftPM on the command line cannot compile MLX's Metal shaders.
+xcodebuild -scheme Omnikeys -configuration Release -destination 'platform=macOS' -derivedDataPath "$SCRATCH" \
+  -skipMacroValidation -skipPackagePluginValidation build 2>&1 | grep -E "error:|BUILD" | tail -5
+PRODUCTS="$SCRATCH/Build/Products/Release"
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Fonts"
-cp "$SCRATCH/release/Omnikeys" "$APP/Contents/MacOS/"
+cp "$PRODUCTS/Omnikeys" "$APP/Contents/MacOS/"
+cp -R "$PRODUCTS"/*.bundle "$APP/Contents/Resources/"   # MLX metallib
 cp Resources/Fonts/*.ttf "$APP/Contents/Resources/Fonts/"
 sed "s/__VERSION__/$V/g" Resources/Info.plist > "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"

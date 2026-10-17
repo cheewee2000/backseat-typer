@@ -1,5 +1,24 @@
 import AppKit
 import FoundationModels
+import Observation
+import MLXLLM
+import MLXLMCommon
+import MLXHuggingFace
+import HuggingFace
+import Tokenizers
+
+/// Model choices. "apple-on-device" is the Apple Intelligence model; the rest are the open-weight
+/// models Cotypist ships (Gemma 4 default, Qwen), fetched from Hugging Face on first use and run by MLX.
+enum Models {
+    static let apple = "apple-on-device"
+    static let options: [(String, String)] = [
+        (apple, "Apple"),
+        ("mlx-community/gemma-4-e2b-it-4bit", "Gemma 4 E2B"),
+        ("mlx-community/gemma-4-e4b-it-4bit", "Gemma 4 E4B"),
+        ("mlx-community/Qwen2.5-1.5B-Instruct-4bit", "Qwen2.5 1.5B"),
+        ("mlx-community/Qwen3-1.7B-4bit", "Qwen3 1.7B"),
+    ]
+}
 
 @Generable struct Continuation {
     @Guide(description: "The next few words that continue the text exactly from the cursor. Start with a space if a new word begins there. No quotes, no explanation.")
@@ -19,13 +38,16 @@ struct CompletionRequest {
     var examples: [String]
     var length: CompletionLength
     var british: Bool
+    var model = Models.apple
 }
 
-final class Engine {
+@Observable final class Engine {
     static let shared = Engine()
     let model = SystemLanguageModel.default
-    var available: Bool { if case .available = model.availability { return true }; return false }
+    var available: Bool { Settings.shared.p.model != Models.apple || { if case .available = model.availability { return true }; return false }() }
     var statusText: String {
+        let id = Settings.shared.p.model
+        if id != Models.apple { return mlxState[id] ?? "DOWNLOADS ON FIRST USE" }
         switch model.availability {
         case .available: return "READY"
         case .unavailable(let r):
@@ -66,7 +88,7 @@ final class Engine {
     }
 
     func complete(_ r: CompletionRequest, custom: String) async throws -> String {
-        // The 3B model loses the thread when anything follows the typed text, so the prompt is the text alone
+        // The small models lose the thread when anything follows the typed text, so the prompt is the text alone
         // and everything else (writer notes, samples, clipboard) lives in the instructions. Plain string output:
         // the JSON wrapper of @Generable ate most of a 20-token budget and left one-word suggestions.
         var ins = instructions(r, custom: custom)
@@ -74,13 +96,39 @@ final class Engine {
         let afterLine = r.after.prefix(while: { $0 != "\n" })
         if !afterLine.trimmingCharacters(in: .whitespaces).isEmpty { ins += "\n\nThe text after the cursor is: \(afterLine.prefix(200))\nYour words must fit before it." }
         ins += "\n\nExample:\nText: I went to the\nContinuation: store to pick up milk"
-        let session = LanguageModelSession(model: model, instructions: ins)
         let prompt = "Text: \(r.before.suffix(1500))\nContinuation:"
         let tokens: Int
         switch r.length { case .short: tokens = 12; case .medium: tokens = 24; case .long: tokens = 48 }
-        let opts = GenerationOptions(sampling: .greedy, temperature: 0, maximumResponseTokens: tokens)
-        let out = try await session.respond(to: prompt, options: opts).content
+        let out: String
+        if r.model == Models.apple {
+            let session = LanguageModelSession(model: model, instructions: ins)
+            out = try await session.respond(to: prompt, options: GenerationOptions(sampling: .greedy, temperature: 0, maximumResponseTokens: tokens)).content
+        } else {
+            let session = ChatSession(try await mlx(r.model), instructions: ins,
+                                      generateParameters: GenerateParameters(maxTokens: tokens, temperature: 0),
+                                      additionalContext: ["enable_thinking": false])
+            out = try await session.respond(to: prompt)
+        }
         return Engine.clean(before: r.before, raw: out, maxWords: r.length == .short ? 3 : (r.length == .medium ? 8 : 20))
+    }
+
+    // MARK: MLX models
+    private(set) var mlxState: [String: String] = [:]
+    private var mlxLoads: [String: Task<ModelContainer, Error>] = [:]
+    /// One model resident at a time; the others are dropped when a new one loads.
+    @MainActor private func mlx(_ id: String) async throws -> ModelContainer {
+        if let t = mlxLoads[id] { return try await t.value }
+        mlxLoads = [:]
+        mlxState[id] = "LOADING"
+        let t = Task { [weak self] in
+            try await LLMModelFactory.shared.loadContainer(from: #hubDownloader(), using: #huggingFaceTokenizerLoader(),
+                                                           configuration: ModelConfiguration(id: id)) { p in
+                Task { @MainActor in self?.mlxState[id] = "DOWNLOADING \(Int(p.fractionCompleted * 100))%" }
+            }
+        }
+        mlxLoads[id] = t
+        do { let c = try await t.value; mlxState[id] = "READY"; return c }
+        catch { mlxState[id] = "FAILED: \(error.localizedDescription)"; mlxLoads[id] = nil; throw error }
     }
 
     func alternatives(_ r: CompletionRequest, firstWord: String, custom: String) async throws -> [String] {
@@ -102,6 +150,8 @@ final class Engine {
         var s = raw.replacingOccurrences(of: "\r", with: "")
         if let nl = s.firstIndex(of: "\n") { s = String(s[..<nl]) }   // single line
         s = s.trimmingCharacters(in: CharacterSet(charactersIn: "\"“”`"))
+        // The prompt's own label leaks back when the model has nothing to add.
+        if s.lowercased().hasPrefix("continuation") { s = String(s.dropFirst("continuation".count)).trimmingCharacters(in: CharacterSet(charactersIn: ": ")) }
         // Strip anything the model repeated from the end of the context.
         let tail = String(before.suffix(60))
         for k in stride(from: min(tail.count, s.count), through: 2, by: -1) {

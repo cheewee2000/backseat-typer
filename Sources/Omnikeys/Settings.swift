@@ -53,7 +53,7 @@ struct Prefs: Codable {
     var emojiSuggestions = true
     var completeInCodeEditors = false
     var completeInTerminals = false
-    var model = "apple-on-device"
+    var model = Models.apple
     // shortcuts
     var nextWord: Shortcut? = Shortcut(keyCode: 48, modifiers: 0, label: "TAB")
     var acceptAll: Shortcut? = Shortcut(keyCode: 50, modifiers: 0, label: "`")

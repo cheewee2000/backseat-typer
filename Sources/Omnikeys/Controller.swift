@@ -174,7 +174,7 @@ enum Suggestion: Equatable {
             clipboard: p.clipboardAwareness ? NSPasteboard.general.string(forType: .string) : nil,
             appName: c.appName, appInstructions: rule.instructions,
             examples: p.recording ? History.shared.examples(for: c.bundleID, strength: p.personalization) : [],
-            length: p.completionLength, british: p.britishEnglish)
+            length: p.completionLength, british: p.britishEnglish, model: p.model)
         let g = gen
         let custom = p.customInstructions
         task = Task { [weak self] in

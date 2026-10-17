@@ -147,9 +147,9 @@ struct SettingsRoot: View {
             Toggle("Complete in terminals for regular shell typing (AI agent prompts always work)", isOn: $s.p.completeInTerminals).toggleStyle(CWTToggle())
             Toggle("Launch at login", isOn: Binding(get: { s.launchAtLogin }, set: { s.launchAtLogin = $0 })).toggleStyle(CWTToggle())
             H("Model")
-            Row("Model") { Segments(value: $s.p.model, options: [("apple-on-device", "Apple on-device")]) }
+            Row("Model") { Segments(value: $s.p.model, options: Models.options) }
             Row("Status") { Text(Engine.shared.statusText).font(.mono(14)) }
-            Text("Runs on the Apple Intelligence foundation model built into macOS. Nothing leaves this Mac.").font(.mono(12)).frame(maxWidth: 560, alignment: .leading)
+            Text("Apple is the Apple Intelligence model built into macOS. Gemma 4 (Cotypist\u{2019}s default) and Qwen are open-weight models, downloaded once from Hugging Face on first use (1 to 3 GB) and run on-device by MLX. Nothing you type leaves this Mac.").font(.mono(12)).frame(maxWidth: 560, alignment: .leading)
         }
     }
 
