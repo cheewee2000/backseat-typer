@@ -13,6 +13,7 @@ rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Fonts"
 cp "$PRODUCTS/BackseatTyper" "$APP/Contents/MacOS/"
 cp -R "$PRODUCTS"/*.bundle "$APP/Contents/Resources/"   # MLX metallib
 cp Resources/Fonts/*.ttf "$APP/Contents/Resources/Fonts/"
+cp Resources/menubar.svg "$APP/Contents/Resources/"
 sed "s/__VERSION__/$V/g" Resources/Info.plist > "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 [ -f Resources/Assets.car ] && cp Resources/Assets.car "$APP/Contents/Resources/"

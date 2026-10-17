@@ -150,8 +150,9 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
     func applicationDidFinishLaunching(_ n: Notification) {
         Log.w("launch v\(Settings.shared.version) model=\(Engine.shared.statusText) ax=\(AXIsProcessTrusted()) e2e=\(e2e)")
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.font = CWT.font(14)
-        statusItem.button?.title = "¶"
+        if let u = Bundle.main.url(forResource: "menubar", withExtension: "svg"), let img = NSImage(contentsOf: u) {
+            img.isTemplate = true; img.size = NSSize(width: 18, height: 18); statusItem.button?.image = img
+        } else { statusItem.button?.font = CWT.font(14); statusItem.button?.title = "¶" }
         let menu = NSMenu(); menu.delegate = self; statusItem.menu = menu
         if !AXIsProcessTrusted() {
             AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
@@ -168,7 +169,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
         let bundle = front?.bundleIdentifier ?? ""
         let appName = front?.localizedName ?? "this app"
         let on = s.p.enabled && !c.pausedGlobally
-        statusItem.button?.title = on ? "¶" : "¶·"
+        statusItem.button?.appearsDisabled = !on
         func item(_ t: String, _ sel: Selector?, _ key: String = "") -> NSMenuItem {
             let i = NSMenuItem(title: t, action: sel, keyEquivalent: key); i.target = self
             i.attributedTitle = NSAttributedString(string: t, attributes: [.font: CWT.font(13)]); return i
