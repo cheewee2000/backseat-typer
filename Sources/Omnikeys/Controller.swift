@@ -162,7 +162,6 @@ enum Suggestion: Equatable {
             let word = String(c.before.dropLast(trailing.count).reversed().prefix(while: { $0.isLetter || $0 == "'" }).reversed())
             if let fix = Spell.fix(word) {
                 show(.typo(word: word, fix: fix, trailing: trailing), fontSize: c.fontSize)
-                if !p.fullAutocorrect { return }  // indicator only (Tab still fixes when full autocorrect is on)
                 return
             }
         }
@@ -242,6 +241,7 @@ enum Suggestion: Equatable {
         guard let s = suggestion else { return }
         switch s {
         case .typo(let word, let fix, let trailing):
+            guard settings.p.fullAutocorrect else { hideAll(); return }   // indicator only
             hideAll(); tap.backspace((word as NSString).length + (trailing as NSString).length); typed(fix + trailing); schedule()
         case .emoji(let code, let e):
             hideAll(); tap.backspace((code as NSString).length + 1); typed(e); schedule()
