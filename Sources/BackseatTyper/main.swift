@@ -26,6 +26,12 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
     var settingsWindow: NSWindow?
     let controller = Controller.shared
 
+    /// The window of `pid` whose title contains `title`, for e2e handlers that must not depend on the front app.
+    func testWindow(_ q: [String: String]) -> AXUIElement? {
+        guard let pid = Int32(q["pid"] ?? ""), let t = q["title"] else { return nil }
+        let wins = AX.attr(AXUIElementCreateApplication(pid), kAXWindowsAttribute as String) as? [AXUIElement] ?? []
+        return wins.first { (AX.attr($0, kAXTitleAttribute as String) as? String ?? "").contains(t) }
+    }
     // e2e driver: only when launched with --e2e (scripts/e2e.sh). The shell host is not AX-trusted; this app is,
     // so the test script asks the app to type via backseattyper://type?text=… and backseattyper://key?code=…
     let e2e = CommandLine.arguments.contains("--e2e")
@@ -50,7 +56,8 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
                 controller.tap.simulate(key: c, flags: f)
             }
         case "vault": Vault.shared.loadPlain(path: q["file"] ?? "")   // test data, never saved
-        case "fill": controller.fillForm()
+        case "fill":   // with pid+title: that window, whatever is in front (tests run beside other apps)
+            if let w = testWindow(q) { let (n, k) = FormFill.fillWindow(w, profile: "P1", includeSensitive: false); Log.w("FILL form: \(n) filled, \(k) sensitive skipped") } else { controller.fillForm() }
         case "click":   // a real mouse click in the front window (tests: give a web editor keyboard focus). fx/fy are fractions of the window.
             guard let app = NSWorkspace.shared.frontmostApplication, let win = AX.attr(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute as String),
                   let pos = AX.attr(win as! AXUIElement, kAXPositionAttribute as String), let size = AX.attr(win as! AXUIElement, kAXSizeAttribute as String) else { Log.w("click: no window"); return }
@@ -111,6 +118,15 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
                     Log.w("e2e raise \(t.debugDescription) pid \(pid): windows=\(titles.map { String($0.prefix(40)) })")
                 }
             }
+        case "labels":   // log the label and vault match of every field in a window, by title, without focus (tests)
+            guard let w = testWindow(q) else { Log.w("e2e labels: no window"); break }
+            var queue = [w], n = 0
+            while !queue.isEmpty, n < 1500 {
+                let e = queue.removeFirst(); n += 1
+                if ["AXTextField", "AXTextArea", "AXComboBox"].contains(AX.attr(e, kAXRoleAttribute as String) as? String ?? "") {
+                    Log.w("e2e label \(FormFill.label(of: e).debugDescription) name \(FormFill.name(of: e).debugDescription) -> \(FormFill.match(e, profile: "P1")?.value.debugDescription ?? "nil")")
+                } else if let kids = AX.attr(e, kAXChildrenAttribute as String) as? [AXUIElement] { queue.append(contentsOf: kids.prefix(300)) }
+            }
         case "activate":   // bring a process to the front (the shell host may not)
             if let pid = Int32(q["pid"] ?? ""), let app = NSRunningApplication(processIdentifier: pid) { Log.w("e2e activate \(app.localizedName ?? "?") -> \(app.activate(options: [.activateIgnoringOtherApps]))") }
         case "axprobe":   // geometry diagnostics for the focused element
@@ -140,7 +156,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
         case "importcontacts":
             Task { do { let k = try await Vault.shared.importMeCard(into: Settings.shared.p.fillProfile); Log.w("vault import from Contacts: \(k)") } catch { Log.w("vault import failed: \(error.localizedDescription)") } }
         case "focusfirst":   // focus the first text field of the front window, as a click would
-            if let w = FormFill.frontWindow(), let f = FormFill.firstField(in: w, labelled: q["label"]) {
+            if let w = testWindow(q) ?? FormFill.frontWindow(), let f = FormFill.firstField(in: w, labelled: q["label"]) {
                 AXUIElementSetAttributeValue(f, kAXFocusedAttribute as CFString, kCFBooleanTrue); controller.schedule(after: 300)
             } else { Log.w("e2e focusfirst: no field") }
         default: break

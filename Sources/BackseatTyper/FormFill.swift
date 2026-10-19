@@ -15,16 +15,42 @@ enum FormFill {
         if let tu = AX.attr(el, kAXTitleUIElementAttribute as String) {
             let t = tu as! AXUIElement
             if let s = (AX.attr(t, kAXValueAttribute as String) as? String ?? AX.attr(t, kAXTitleAttribute as String) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty { return s }
+            if let s = text(under: t) { return s }   // Chrome's <label> is a group whose words sit in static text children
         }
         if let p = str(kAXPlaceholderValueAttribute as String) { return p }
-        // Nearest preceding static text among the siblings, like content.js walks previousElementSibling.
-        if let parent = AX.attr(el, kAXParentAttribute as String), let kids = AX.attr(parent as! AXUIElement, kAXChildrenAttribute as String) as? [AXUIElement],
-           let i = kids.firstIndex(where: { CFEqual($0, el) }) {
-            for k in kids[..<i].reversed().prefix(3) {
-                if (AX.attr(k, kAXRoleAttribute as String) as? String) == "AXStaticText", let s = (AX.attr(k, kAXValueAttribute as String) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty, s.count < 80 { return s }
-            }
+        // Nearest preceding static text, like content.js walks previousElementSibling, climbing out of the wrapper
+        // divs web forms put around inputs (Chrome exposes each as an AXGroup).
+        var cur = el
+        for _ in 0..<4 {
+            guard let parent = AX.attr(cur, kAXParentAttribute as String), let kids = AX.attr(parent as! AXUIElement, kAXChildrenAttribute as String) as? [AXUIElement],
+                  let i = kids.firstIndex(where: { CFEqual($0, cur) }) else { break }
+            for k in kids[..<i].reversed().prefix(3) { if let s = lastText(in: k), s.count < 80 { return s } }
+            cur = parent as! AXUIElement
         }
         return ""
+    }
+    /// The last static text in a subtree, skipping other fields (their values are not labels).
+    private static func lastText(in el: AXUIElement, depth: Int = 3) -> String? {
+        let role = AX.attr(el, kAXRoleAttribute as String) as? String ?? ""
+        // A lone "*" or ":" is a required marker beside the label, not the label.
+        if role == "AXStaticText" { return (AX.attr(el, kAXValueAttribute as String) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty.flatMap { $0.contains(where: \.isLetter) ? $0 : nil } }
+        guard depth > 0, !fieldRoles.contains(role), let kids = AX.attr(el, kAXChildrenAttribute as String) as? [AXUIElement] else { return nil }
+        for k in kids.suffix(10).reversed() { if let s = lastText(in: k, depth: depth - 1) { return s } }
+        return nil
+    }
+    /// Every string attribute on an element, for the no-match log.
+    static func dump(_ el: AXUIElement) -> String {
+        var names: CFArray?
+        AXUIElementCopyAttributeNames(el, &names)
+        return ((names as? [String]) ?? []).compactMap { n in (AX.attr(el, n) as? String).flatMap { $0.isEmpty ? nil : "\(n)=\(String($0.prefix(40)).debugDescription)" } }.joined(separator: " ")
+    }
+    /// The static text inside a label element, a few levels deep.
+    private static func text(under el: AXUIElement, depth: Int = 3) -> String? {
+        guard depth > 0, let kids = AX.attr(el, kAXChildrenAttribute as String) as? [AXUIElement] else { return nil }
+        let s = kids.prefix(20).compactMap { k -> String? in
+            (AX.attr(k, kAXRoleAttribute as String) as? String) == "AXStaticText" ? AX.attr(k, kAXValueAttribute as String) as? String : text(under: k, depth: depth - 1)
+        }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? nil : s
     }
     /// The DOM id or name on web fields, Form Filler's second signal after the label.
     static func name(of el: AXUIElement) -> String { AX.attr(el, "AXDOMIdentifier") as? String ?? "" }
@@ -32,6 +58,7 @@ enum FormFill {
     static func match(_ el: AXUIElement, profile: String) -> Match? {
         let vault = Vault.shared.data
         let l = label(of: el)
+        if l.localizedCaseInsensitiveContains("search") { return nil }   // Chrome's "Address and search bar" is not a street address
         let tpl = Matcher.matchWeb(label: l, name: name(of: el), autocomplete: "", pid: profile, vault: vault)
         guard !tpl.isEmpty else { return nil }
         let v = Template.render(tpl, vault)

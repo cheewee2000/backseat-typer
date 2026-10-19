@@ -151,6 +151,7 @@ enum Suggestion: Equatable {
             Log.w("SHOW fill \(c.appName) \(m.label.debugDescription) -> \(m.sensitive ? Template.mask(m.value) : m.value.debugDescription)")
             show(.fill(label: m.label, value: m.value, sensitive: m.sensitive)); return
         }
+        if p.formFill, FormFill.isEmptyField(c) { Log.w("FILL no match: label \(FormFill.label(of: c.element).debugDescription) name \(FormFill.name(of: c.element).debugDescription) attrs: \(FormFill.dump(c.element))") }
         let lastWord = String(c.before.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).last ?? "")
         if p.emojiSuggestions, lastWord.hasPrefix(":"), lastWord.count >= 3, c.before.last != " ",
            let m = Emoji.matches(String(lastWord.dropFirst())).first {
