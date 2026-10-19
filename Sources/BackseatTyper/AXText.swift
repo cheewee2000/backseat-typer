@@ -170,7 +170,7 @@ enum AX {
             else if let c = attrs[.foregroundColor] as? NSColor { color = c }
         }
         // The text colour: the character before the caret, else the first character, else the field's own label
-        // (an empty field has no text of its own), else the system theme. Overlay adds a contrasting halo anyway.
+        // (an empty field has no text of its own), else mid grey: the system theme says nothing about a web page's background.
         if caret > 0 { read(element, CFRange(location: caret - 1, length: 1)) }
         if color == nil, total > 0 { read(element, CFRange(location: 0, length: 1)) }
         if color == nil, let t = attr(element, kAXTitleUIElementAttribute as String) { read(t as! AXUIElement, CFRange(location: 0, length: 1)) }
@@ -178,10 +178,9 @@ enum AX {
            let i = kids.firstIndex(where: { CFEqual($0, element) }) {
             for k in kids[..<i].reversed().prefix(3) where (attr(k, kAXRoleAttribute as String) as? String) == "AXStaticText" { read(k, CFRange(location: 0, length: 1)); if color != nil { break } }
         }
-        let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let fallbackSize = max(11, min(28, (rect?.height ?? 18) * 0.72))
         return FocusContext(element: element, pid: pid, bundleID: app?.bundleIdentifier ?? "pid.\(pid)", appName: app?.localizedName ?? "App",
                             role: role, subrole: subrole, before: (before ?? "").replacingOccurrences(of: "\0", with: " "), after: (after ?? "").replacingOccurrences(of: "\0", with: " "), selected: selected,
-                            caret: caret, caretRect: rect, font: font ?? NSFont.systemFont(ofSize: fallbackSize), textColor: color ?? (dark ? .white : .black))
+                            caret: caret, caretRect: rect, font: font ?? NSFont.systemFont(ofSize: fallbackSize), textColor: color ?? NSColor(white: 0.4, alpha: 1))
     }
 }
