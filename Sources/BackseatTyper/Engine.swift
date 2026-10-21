@@ -259,7 +259,7 @@ struct CompletionRequest {
             let lastWord = String(before.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).last ?? "")
             let firstWord = String(s.prefix(while: { $0.isLetter || $0 == "'" }))
             if !glued, Spell.isWord(lastWord), !Spell.isWord(lastWord + firstWord) { s = " " + s }
-        } else if let lc = lastChar, lc == " " || lc == "\n", firstChar == " " {
+        } else if let lc = lastChar, lc.isWhitespace, firstChar == " " {   // web fields report a typed space as NBSP
             s = String(s.drop(while: { $0 == " " }))
         } else if lastChar == nil, firstChar == " " {
             s = String(s.drop(while: { $0 == " " }))
