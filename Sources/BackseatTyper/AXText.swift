@@ -69,7 +69,10 @@ enum AX {
     static func rangeValue(_ r: CFRange) -> AXValue { var r = r; return AXValueCreate(.cfRange, &r)! }
     static func cfRange(_ v: CFTypeRef?) -> CFRange? {
         guard let v, CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
-        var r = CFRange(); return AXValueGetValue(v as! AXValue, .cfRange, &r) ? r : nil
+        var r = CFRange(); guard AXValueGetValue(v as! AXValue, .cfRange, &r) else { return nil }
+        // Some fields answer "no caret" with location Int.max; arithmetic on it overflows and traps.
+        guard r.location >= 0, r.length >= 0, r.location < 1 << 40, r.length < 1 << 40 else { return nil }
+        return r
     }
     static func cgRect(_ v: CFTypeRef?) -> CGRect? {
         guard let v, CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
