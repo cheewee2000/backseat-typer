@@ -219,6 +219,9 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), i + 1 < Command
     @objc func openAccessibility() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
+    // Opening the app while it already runs (Finder, Spotlight, `open`) shows the window: a menu-bar app otherwise looks dead,
+    // and on a notch MacBook the newest status item is silently dropped when the bar is full.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool { showSettings(); return true }
     @objc func showSettings() {
         if settingsWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
